@@ -51,6 +51,17 @@ enum Token {
     Return,
 }
 
+pub enum Expression {
+    Number(i64),
+    Identifier(String),
+    BinaryOperation {
+        left: Box<Expression>,
+        operator: Token,
+        right: Box<Expression>,
+    },
+}
+
+
 fn main() {
     for token in Token::lexer("11 + 2 * 3") {
         println!("{:?}", token);
