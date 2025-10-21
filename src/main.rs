@@ -1,7 +1,9 @@
 use logos::Logos;
+use chumsky::prelude::*;
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \t\n\f]+")] // Ignore this regex pattern between tokens
+
 enum Token {
     #[token("+")]
     Addition,
