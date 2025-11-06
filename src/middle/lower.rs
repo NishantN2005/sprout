@@ -3,11 +3,11 @@ use crate::middle::ir::{Module, Function, Inst, ValueId};
 
 pub fn lower_expr_to_module(expr: &Expr) -> Module {
     let mut module = Module::new();
-    let mut func = Function::new("main");
+    let mut func = Function::new("main".to_string());
 
     let result = lower_expr(expr, &mut func);
 
-    func.body.push(Inst::Ret {src: result});
+    func.body.push(Inst::Return {src: result});
 
     module.add_function(func);
     module
@@ -22,7 +22,7 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
         }
         Expr::Ident(name) => {
             let dst = func.fresh_value();
-            func.body.push(Inst::Load { name: name.clone(), src: dst });
+            func.body.push(Inst::Load { dst: dst, name: name.clone()});
             dst
         }
         Expr::Unary { op, expr } => {

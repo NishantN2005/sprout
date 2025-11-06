@@ -1,4 +1,8 @@
 mod frontend;
+mod middle;
+
+use frontend::{lexer, parser};
+use middle::lower;
 
 fn main() {
     let tests = [
@@ -9,12 +13,17 @@ fn main() {
     ];
 
     for t in tests {
-        // 1) lex
-        let tokens = frontend::lexer::lex(t);
+        println!("==== {t} ====");
+        let tokens = lexer::lex(t);
 
-        // 2) parse
-        match frontend::parser::parse_tokens(tokens) {
-            Ok(expr) => println!("{t} -> {expr}"),
+        match parser::parse_tokens(tokens) {
+            Ok(expr) => {
+                println!("AST: {expr}");
+
+                let module = lower::lower_expr_to_module(&expr);
+
+                println!("IR: {:#?}", module);
+            }
             Err(e) => eprintln!("Parse error for '{t}': {e}"),
         }
     }

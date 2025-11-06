@@ -2,29 +2,29 @@
 pub struct ValueId(u32);
 
 //produce functions
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug)]
 pub struct Function{
     pub name: String,
     pub body: Vec<Inst>,
     next_value: u32 // generate new value id's
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug)]
 pub struct Module{
-    pub functions: Vec<Funcunction>,
+    pub functions: Vec<Function>,
 }
 
 //defines simple instruction set
 #[derive(Debug, Clone)]
-enum Inst { 
+pub enum Inst { 
     Const {dst: ValueId, value: i64},
     Add {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Sub {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Mul {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Div {dst: ValueId, lhs: ValueId, rhs: ValueId},
-    Call {dst: ValueId, func: FuncId, args: Vec<ValueId>},
-    Load {name: String, src: ValueId},
-    Store {dst: ValueId, name: String},
+    Call  { dst: ValueId, callee: String, args: Vec<ValueId> },
+    Load {dst: ValueId, name: String},
+    Store {name: String, src: ValueId},
     Return {src: ValueId},
 }
 
@@ -53,6 +53,14 @@ impl Function{
         let id = ValueId(self.next_value);
         self.next_value += 1;
         id
+    }
+
+    pub fn dump(&self) {
+        println!("fn {}() {{", self.name);
+        for (i, inst) in self.body.iter().enumerate() {
+            println!("  v{:02}: {:?}", i, inst);
+        }
+        println!("}}");
     }
 }
 
