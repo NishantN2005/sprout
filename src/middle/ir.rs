@@ -74,3 +74,12 @@ impl Module{
         self.functions.push(func);
     }
 }
+
+impl ValueId{
+    pub fn from_usize(id: usize) -> Self {
+        ValueId(id as u32)
+    }
+    pub fn get_usize(&self) -> usize {
+        self.0 as usize
+    }
+}

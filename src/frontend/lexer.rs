@@ -1,5 +1,3 @@
-use std::iter::Peekable;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Plus,
