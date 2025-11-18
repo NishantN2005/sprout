@@ -6,18 +6,34 @@ use frontend::{lexer, parser};
 use middle::lower;
 use backend::llvm;
 
-fn main() {
-    let tests = [
-        "1 + 2 * 3",
-        "-(4 - 2)",
-        // "foo(1, 2 + x)", // this will probably fail until you handle vars
-        // "a + b * c + d",
-    ];
+//read sprout files
+use std::fs;
+use std::io;
 
-    for t in tests {
+
+fn main() {
+    let file_path = "tests";
+    let paths = fs::read_dir(file_path).unwrap();
+
+    let mut tests = Vec::new();
+
+    for path_result in paths{
+        let entry = path_result.expect("Error reading directory entry");
+        let path = entry.path();
+
+        let contents = fs::read_to_string(&path);
+
+        tests.push(contents);
+    }
+
+    println!("{:?}", tests);
+    
+     for t in tests{
+        let t = t.expect("Error reading test file");
+        
         println!("=== {t} ===");
 
-        let tokens = lexer::lex(t);
+        let tokens = lexer::lex(&t);
 
         match parser::parse_tokens(tokens) {
             Ok(expr) => {
