@@ -22,6 +22,15 @@ pub fn lex(input: &str) -> Vec<Token> {
     while let Some(&c) = chars.peek() {
         match c {
             ' ' | '\t' | '\n' | '\r' => { chars.next(); }
+            '#' => {
+                while let Some(&ch) = chars.peek(){
+                    if ch == '\n' {
+                        break;
+                    } else {
+                        chars.next();
+                    }
+                    }
+                }
             '+' => { chars.next(); tokens.push(Token::Plus); }
             '-' => { chars.next(); tokens.push(Token::Minus); }
             '*' => { chars.next(); tokens.push(Token::Star); }
