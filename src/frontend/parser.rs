@@ -70,13 +70,15 @@ impl Parser {
                         Expr::Call { callee: Box::new(Expr::Ident(name)), args }
                     }
                 } else if let Token::Equals = self.peek(){
+                    println!("Ident parsed in else if: {}", name);
                     self.next();
                     let expr = self.parse_expression()?;
                     Expr::Binary{
                         left: Box::new(Expr::Ident(name)),
-                        op: BinaryOp::Assign, // Using Add as a placeholder for assignment
+                        op: BinaryOp::Assign,
                         right: Box::new(expr),}
                 }else {
+                    println!("Ident parsed in else: {}", name);
                     Expr::Ident(name)
                 }
             }

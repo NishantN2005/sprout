@@ -70,6 +70,7 @@ fn get_val<'ctx>(
     id: ValueId,
 ) -> Result<IntValue<'ctx>, String> {
     let idx = id.get_usize();
+    println!("Getting value for ValueId v{}", idx);
     values
         .get(idx)
         .and_then(|v| *v)
@@ -169,7 +170,7 @@ fn codegen_function<'ctx>(
                 let ptr_type = i64_type.ptr_type(AddressSpace::default());
 
                 let loaded = builder
-                    .build_load(ptr_type, *ptr, &format!("load_{name}"))
+                    .build_load(i64_type, *ptr, &format!("load_{name}"))
                     .expect("build_load failed")
                     .into_int_value();
 

@@ -22,7 +22,7 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
         }
         Expr::Ident(name) => {
             let dst = func.fresh_value();
-            func.body.push(Inst::Load { dst: dst, name: name.clone()});
+            func.body.push(Inst::Load { dst, name: name.clone()});
             dst
         }
         Expr::Unary { op, expr } => {
@@ -39,21 +39,35 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
             }
         }
         Expr::Binary { left, op, right } => {
-            let lhs = lower_expr(left, func);
             let rhs = lower_expr(right, func);
             let dst = func.fresh_value();
+
             match op {
-                BinaryOp::Add => func.body.push(Inst::Add { dst, lhs, rhs }),
-                BinaryOp::Sub => func.body.push(Inst::Sub { dst, lhs, rhs }),
-                BinaryOp::Mul => func.body.push(Inst::Mul { dst, lhs, rhs }),
-                BinaryOp::Div => func.body.push(Inst::Div { dst, lhs, rhs }),
                 BinaryOp::Assign => {
-                    let var_name = match &**left {
-                        Expr::Ident(name) => name.clone(),
-                        _ => panic!("Left side of assignment must be an identifier"),
+                    let name = match &**left{
+                        Expr::Ident(n) => n.clone(),
+                        _ => panic!("Left side of assignment must be an identifier!"),
                     };
-                    func.body.push(Inst::Store {name: var_name, src: rhs})
-                }
+                    func.body.push(Inst::Store { name: name.clone(), src: rhs });
+
+                    func.body.push(Inst::Load { dst, name });
+                },
+                BinaryOp::Add => {
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Add { dst, lhs, rhs })
+                },
+                BinaryOp::Sub => {
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Sub { dst, lhs, rhs })
+                },
+                BinaryOp::Mul =>{
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Mul { dst, lhs, rhs })
+                },
+                BinaryOp::Div => {
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Div { dst, lhs, rhs })
+                },
             }
             dst
         }
