@@ -47,6 +47,13 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
                 BinaryOp::Sub => func.body.push(Inst::Sub { dst, lhs, rhs }),
                 BinaryOp::Mul => func.body.push(Inst::Mul { dst, lhs, rhs }),
                 BinaryOp::Div => func.body.push(Inst::Div { dst, lhs, rhs }),
+                BinaryOp::Assign => {
+                    let var_name = match &**left {
+                        Expr::Ident(name) => name.clone(),
+                        _ => panic!("Left side of assignment must be an identifier"),
+                    };
+                    func.body.push(Inst::Store {name: var_name, src: rhs})
+                }
             }
             dst
         }

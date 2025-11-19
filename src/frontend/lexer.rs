@@ -7,6 +7,7 @@ pub enum Token {
     LParen,
     RParen,
     Comma,
+    Equals,
     Number(i64),
     Ident(String),
     Eof,
@@ -31,6 +32,7 @@ pub fn lex(input: &str) -> Vec<Token> {
                     }
                     }
                 }
+            '=' => {chars.next(); tokens.push(Token::Equals);}
             '+' => { chars.next(); tokens.push(Token::Plus); }
             '-' => { chars.next(); tokens.push(Token::Minus); }
             '*' => { chars.next(); tokens.push(Token::Star); }
