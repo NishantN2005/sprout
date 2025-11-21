@@ -1,18 +1,6 @@
 use crate::frontend::ast::{Expr, UnaryOp, BinaryOp};
 use crate::middle::ir::{Module, Function, Inst, ValueId};
 
-pub fn lower_expr_to_module(expr: &Expr) -> Module {
-    let mut module = Module::new();
-    let mut func = Function::new("main".to_string());
-
-    let result = lower_expr(expr, &mut func);
-
-    func.body.push(Inst::Return {src: result});
-
-    module.add_function(func);
-    module
-}
-
 pub fn lower_program_to_module(exprs: &[Expr]) -> Module {
     let mut module = Module::new();
     let mut func = Function::new("main".to_string());
