@@ -13,6 +13,31 @@ pub fn lower_expr_to_module(expr: &Expr) -> Module {
     module
 }
 
+pub fn lower_program_to_module(exprs: &[Expr]) -> Module {
+    let mut module = Module::new();
+    let mut func = Function::new("main".to_string());
+
+    let mut last: Option<ValueId> = None;
+
+    for e in exprs {
+        let v = lower_expr(e, &mut func);
+        last = Some(v);
+    }
+
+    let result = match last {
+        Some(v) => v,
+        None => {
+            let dst = func.fresh_value();
+            func.body.push(Inst::Const { dst, value: 0 });
+            dst
+        }
+    };
+
+    func.body.push(Inst::Return { src: result });
+    module.add_function(func);
+    module
+}
+
 fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
     match expr {
         Expr::Number(n) => {
@@ -49,8 +74,8 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
                         _ => panic!("Left side of assignment must be an identifier!"),
                     };
                     func.body.push(Inst::Store { name: name.clone(), src: rhs });
-
                     func.body.push(Inst::Load { dst, name });
+
                 },
                 BinaryOp::Add => {
                     let lhs = lower_expr(left, func);

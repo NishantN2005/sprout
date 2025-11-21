@@ -37,9 +37,11 @@ fn main() {
 
         match parser::parse_tokens(tokens) {
             Ok(expr) => {
-                println!("AST: {expr}");
+                for exp in expr.iter(){
+                    println!("AST: {exp}");
+                }
 
-                let ir_module = lower::lower_expr_to_module(&expr);
+                let ir_module = lower::lower_program_to_module(&expr);
                 println!("IR: {:#?}", ir_module);
 
                 match llvm::jit_run_main(&ir_module) {

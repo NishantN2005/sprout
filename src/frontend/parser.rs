@@ -42,6 +42,10 @@ impl Parser {
                 let rhs = self.parse_prec(3)?;
                 Expr::Unary { op: UnaryOp::Neg, expr: Box::new(rhs) }
             }
+            Token::Semicolon =>{
+                self.next();
+                self.parse_expression()?
+            }
             Token::Number(n) => {
                 let v = *n;
                 self.next();
@@ -73,6 +77,7 @@ impl Parser {
                     println!("Ident parsed in else if: {}", name);
                     self.next();
                     let expr = self.parse_expression()?;
+                    println!("Assignment expression parsed: {}", expr);
                     Expr::Binary{
                         left: Box::new(Expr::Ident(name)),
                         op: BinaryOp::Assign,
@@ -124,12 +129,38 @@ impl Parser {
     }
 }
 
-// public entry:
-pub fn parse_tokens(tokens: Vec<Token>) -> Result<Expr, String> {
-    let mut p = Parser::new(tokens);
-    let expr = p.parse_expression()?;
-    match p.peek() {
-        Token::Eof => Ok(expr),
-        t => Err(format!("Unexpected trailing token: {:?}", t)),
+fn parse_statement(tokens: Vec<Token>) -> Result<Vec<Vec<Token>>, String> {
+        let mut statements: Vec<Vec<Token>> = Vec::new();
+        let mut tmp = Vec::new();
+        for stmt in tokens{
+            if stmt == Token::Semicolon{
+                statements.push(tmp);
+                tmp = Vec::new();
+            } else{
+                tmp.push(stmt);
+            }
+        };
+        Ok(statements)
     }
+
+// public entry:
+pub fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Expr>, String> {
+    let mut p_stat = parse_statement(tokens)?;
+    let mut p = Vec::new();
+
+    for stmt in p_stat.iter(){
+        let mut parse = Parser::new(stmt.clone());
+        p.push(parse.parse_expression()?);
+    }
+
+    //let expr = p_stat.parse_expression()?;
+    for expr in p.iter(){
+        println!("Parsed expression: {}", expr);
+    }
+
+    Ok(p)
+    /*match p.peek() {
+        Token::Eof => Ok(Vec<Expr>),
+        t => Err(format!("Unexpected trailing token: {:?}", t)),
+    }*/
 }
