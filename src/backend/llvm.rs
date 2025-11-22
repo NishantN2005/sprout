@@ -5,12 +5,10 @@ use inkwell::targets::{InitializationConfig, Target};
 use inkwell::{
     builder::Builder,
     context::Context,
-    execution_engine::ExecutionEngine,
     module::Module as LlvmModule,
     types::IntType,
     values::{FunctionValue, IntValue, PointerValue},
-    OptimizationLevel,
-    AddressSpace
+    OptimizationLevel
 };
 
 use crate::middle::ir::{Module as IrModule, Function as IrFunction, Inst, ValueId};
@@ -167,7 +165,6 @@ fn codegen_function<'ctx>(
                     .get(name)
                     .ok_or_else(|| format!("load of undefined variable '{name}'"))?;
 
-                let ptr_type = i64_type.ptr_type(AddressSpace::default());
 
                 let loaded = builder
                     .build_load(i64_type, *ptr, &format!("load_{name}"))

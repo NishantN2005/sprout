@@ -145,7 +145,7 @@ fn parse_statement(tokens: Vec<Token>) -> Result<Vec<Vec<Token>>, String> {
 
 // public entry:
 pub fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Expr>, String> {
-    let mut p_stat = parse_statement(tokens)?;
+    let p_stat = parse_statement(tokens)?;
     let mut p = Vec::new();
 
     for stmt in p_stat.iter(){

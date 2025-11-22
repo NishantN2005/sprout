@@ -8,7 +8,6 @@ use backend::llvm;
 
 //read sprout files
 use std::fs;
-use std::io;
 
 
 fn main() {
@@ -42,6 +41,10 @@ fn main() {
                 }
 
                 let ir_module = lower::lower_program_to_module(&expr);
+                //optimize module
+                let mut ir_module = ir_module;
+                middle::opt::optimize_module(&mut ir_module);
+
                 println!("IR: {:#?}", ir_module);
 
                 match llvm::jit_run_main(&ir_module) {
