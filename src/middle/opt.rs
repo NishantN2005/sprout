@@ -26,6 +26,36 @@ pub fn constant_folding(&mut function: &mut Function){
                     new_body.push(Inst::Const {dst: *dst, value: res});
                 }
             }
+            Inst::Sub {dst, lhs, rhs} =>{
+                if let (Some(lv), Some(rv)) = (const_map.get(lhs), const_map.get(rhs)){
+                    let res = lv - rv;
+                    const_map.insert(*dst, res);
+                    new_body.push(Inst::Const {dst: *dst, value: res});
+                }
+            }
+            Inst::Mul { dst, lhs, rhs } => {
+                if let (Some(lv), Some(rv)) = (const_map.get(lhs), const_map.get(rhs)) {
+                    let res = lv * rv;
+                    const_map.insert(*dst, res);
+                    new_body.push(Inst::Const { dst: *dst, value: res });
+                }
+            }
+
+            Inst::Div { dst, lhs, rhs } => {
+                if let (Some(lv), Some(rv)) = (const_map.get(lhs), const_map.get(rhs)) {
+                    // avoid folding division by zero at compile time
+                    if *rv != 0 {
+                        let res = lv / rv;
+                        const_map.insert(*dst, res);
+                        new_body.push(Inst::Const { dst: *dst, value: res });
+                    }else{
+                        new_body.push(expr.clone());
+                    }
+                }
+            }
+
+
         }
     }
+    function.body = new_body; 
 }
