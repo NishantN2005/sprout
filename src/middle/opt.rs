@@ -63,6 +63,10 @@ pub fn constant_folding(function: &mut Function){
             Inst::Return{src} => {
                 new_body.push(expr.clone());
             }
+            Inst::Boolean {dst, value} => {
+                //currently do not support constant folding for bool expr
+                new_body.push(expr.clone());
+            }
             _ => todo!()
 
 

@@ -35,7 +35,13 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
         }
         Expr::Ident(name) => {
             let dst = func.fresh_value();
-            func.body.push(Inst::Load { dst, name: name.clone()});
+            if name == "true" {
+                func.body.push(Inst::Boolean { dst, value: true });
+            }else if name == "false" {
+                func.body.push(Inst::Boolean { dst, value: false });
+            }else{
+                func.body.push(Inst::Load { dst, name: name.clone()});
+            }
             dst
         }
         Expr::Unary { op, expr } => {

@@ -111,7 +111,14 @@ fn codegen_function<'ctx>(
                 let v = i64_type.const_int(*value as u64, true);
                 set_val(&mut values, *dst, v);
             }
-
+            Inst::Boolean {dst, value} => {
+                let v = if *value {
+                    i64_type.const_int(1, false)
+                }else{
+                    i64_type.const_int(0, false)
+                };
+                set_val(&mut values, *dst, v);
+            }
             Inst::Add { dst, lhs, rhs } => {
                 let l = get_val(&values, *lhs)?;
                 let r = get_val(&values, *rhs)?;

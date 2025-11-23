@@ -18,6 +18,7 @@ pub struct Module{
 #[derive(Debug, Clone)]
 pub enum Inst { 
     Const {dst: ValueId, value: i64},
+    Boolean {dst: ValueId, value: bool},
     Add {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Sub {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Mul {dst: ValueId, lhs: ValueId, rhs: ValueId},
