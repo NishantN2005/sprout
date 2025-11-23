@@ -1,4 +1,4 @@
-use crate::middle::ir::{Module, Function};
+use crate::middle::ir::{Module, Function, Inst};
 use std::collections::HashMap;
 
 pub fn optimize_module(module: &mut Module)-> &mut Module {
@@ -9,11 +9,12 @@ pub fn optimize_module(module: &mut Module)-> &mut Module {
     module
 }
 
-pub fn constant_folding(&mut function: &mut Function){
-    let mut const_map = Hashmap::new();
+pub fn constant_folding(function: &mut Function){
+    let mut const_map = HashMap::new();
     let mut new_body = Vec::new();
 
     for expr in function.body.iter(){
+        println!("{:?}", expr);
         match expr{
             Inst::Const {dst, value} =>{
                 const_map.insert(*dst, *value);
@@ -52,7 +53,17 @@ pub fn constant_folding(&mut function: &mut Function){
                         new_body.push(expr.clone());
                     }
                 }
+            },
+            Inst::Store {name, src} => {
+                new_body.push(expr.clone());
+            },
+            Inst::Load {dst, name} => {
+                new_body.push(expr.clone());
+            },
+            Inst::Return{src} => {
+                new_body.push(expr.clone());
             }
+            _ => todo!()
 
 
         }

@@ -40,9 +40,9 @@ fn main() {
                     println!("AST: {exp}");
                 }
 
-                let ir_module = lower::lower_program_to_module(&expr);
+                let mut ir_module = lower::lower_program_to_module(&expr);
+
                 //optimize module
-                let mut ir_module = ir_module;
                 middle::opt::optimize_module(&mut ir_module);
 
                 println!("IR: {:#?}", ir_module);
