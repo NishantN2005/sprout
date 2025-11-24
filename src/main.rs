@@ -11,6 +11,7 @@ use std::fs;
 
 
 fn main() {
+    backend::llvm::init_llvm();
     let file_path = "tests";
     let paths = fs::read_dir(file_path).unwrap();
 

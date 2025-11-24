@@ -12,12 +12,11 @@ use inkwell::{
 };
 
 use crate::middle::ir::{Module as IrModule, Function as IrFunction, Inst, ValueId};
-
-pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
-
+pub fn init_llvm() {
     Target::initialize_native(&InitializationConfig::default())
-        .map_err(|e| format!("Failed to initialize native target: {e}"))?;
-
+        .expect("Failed to initialize native target");
+}
+pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
     //find IR main
     let main_ir = ir
         .functions

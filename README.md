@@ -84,24 +84,3 @@ terminated (e.g., with `;` or newline depending on your lexer).
   builder loads the element type (not a `ptr` type) or use the pointer-only
   overload `build_load(ptr, name)`.
 
-## Contributing
-
-- Add tests to `tests/` to cover new language features.
-- Keep the lexer simple (flat token stream). Let the parser build AST/blocks.
-- Add optimization passes in `src/middle/opt.rs`; keep passes small and
-  unit-testable.
-
-## Troubleshooting
-
-- `cargo build` prints an `llvm-sys` error: ensure LLVM is installed and the
-  correct `LLVM_SYS_<MAJOR>_PREFIX` env var points to it.
-- If the JIT panics with missing ValueId errors, run the IR validator (or print
-  `Module` / `Function::dump()`) to find instructions that reference
-  ValueIds that were never produced.
-
-If you'd like, I can add:
-- a feature flag to disable the backend for quicker iteration; or
-- automated tests for the optimizer passes that don't require LLVM.
-
-Thanks — tell me if you'd like the README expanded (license, CI tips, more
-examples, or a development checklist).
