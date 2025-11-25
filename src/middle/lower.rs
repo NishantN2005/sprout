@@ -35,6 +35,7 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
         }
         Expr::Ident(name) => {
             let dst = func.fresh_value();
+            //boolean check
             if name == "true" {
                 func.body.push(Inst::Boolean { dst, value: true });
             }else if name == "false" {
@@ -87,6 +88,18 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
                     let lhs = lower_expr(left, func);
                     func.body.push(Inst::Div { dst, lhs, rhs })
                 },
+                BinaryOp::Greater => {
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Greater {dst, lhs, rhs})
+                },
+                BinaryOp::Less => {
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Less {dst, lhs, rhs})
+                },
+                BinaryOp::Equal => {
+                    let lhs = lower_expr(left, func);
+                    func.body.push(Inst::Equal {dst, lhs, rhs})
+                }
             }
             dst
         }

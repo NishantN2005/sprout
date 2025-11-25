@@ -62,10 +62,31 @@ pub fn constant_folding(function: &mut Function){
             },
             Inst::Return{src} => {
                 new_body.push(expr.clone());
-            }
+            },
             Inst::Boolean {dst, value} => {
                 //currently do not support constant folding for bool expr
                 new_body.push(expr.clone());
+            },
+            Inst::Greater {dst, lhs, rhs} => {
+                if let (Some(lv), Some(rv)) = (const_map.get(lhs), const_map.get(rhs)){
+                    let res = lv > rv;
+                    const_map.insert(*dst, if res {1} else {0});
+                    new_body.push(Inst::Boolean {dst: *dst, value: res});
+                }
+            },
+            Inst::Less {dst, lhs, rhs} => {
+                if let (Some(lv), Some(rv)) = (const_map.get(lhs), const_map.get(rhs)){
+                    let res = lv < rv;
+                    const_map.insert(*dst, if res {1} else {0});
+                    new_body.push(Inst::Boolean {dst: *dst, value: res});
+                }
+            },
+            Inst::Equal {dst, lhs, rhs} => {
+                if let (Some(lv), Some(rv)) = (const_map.get(lhs), const_map.get(rhs)){
+                    let res = lv == rv;
+                    const_map.insert(*dst, if res {1} else {0});
+                    new_body.push(Inst::Boolean {dst: *dst, value: res});
+                }
             }
             _ => todo!()
 
