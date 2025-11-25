@@ -118,6 +118,39 @@ fn codegen_function<'ctx>(
                 };
                 set_val(&mut values, *dst, v);
             }
+            Inst::Greater { dst, lhs, rhs } => {
+                let l = get_val(&values, *lhs)?;
+                let r = get_val(&values, *rhs)?;
+                let cmp = builder
+                    .build_int_compare(inkwell::IntPredicate::SGT, l, r, "gttmp")
+                    .expect("build_int_compare failed");
+                let v = builder
+                    .build_int_z_extend(cmp, i64_type, "booltmp")
+                    .expect("build_int_z_extend failed");
+                set_val(&mut values, *dst, v);
+            }
+            Inst::Less { dst, lhs, rhs } => {
+                let l = get_val(&values, *lhs)?;
+                let r = get_val(&values, *rhs)?;
+                let cmp = builder
+                    .build_int_compare(inkwell::IntPredicate::SLT, l, r, "lttmp")
+                    .expect("build_int_compare failed");
+                let v = builder
+                    .build_int_z_extend(cmp, i64_type, "booltmp")
+                    .expect("build_int_z_extend failed");
+                set_val(&mut values, *dst, v);
+            }
+            Inst::Equal { dst, lhs, rhs } => {
+                let l = get_val(&values, *lhs)?;
+                let r = get_val(&values, *rhs)?;
+                let cmp = builder
+                    .build_int_compare(inkwell::IntPredicate::EQ, l, r, "eqtmp")
+                    .expect("build_int_compare failed");
+                let v = builder
+                    .build_int_z_extend(cmp, i64_type, "booltmp")
+                    .expect("build_int_z_extend failed");
+                set_val(&mut values, *dst, v);
+            }
             Inst::Add { dst, lhs, rhs } => {
                 let l = get_val(&values, *lhs)?;
                 let r = get_val(&values, *rhs)?;
