@@ -14,7 +14,7 @@ pub enum Expr {
 pub enum UnaryOp { Neg }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BinaryOp { Add, Sub, Mul, Div, Assign }
+pub enum BinaryOp { Add, Sub, Mul, Div, Assign, Greater, Less, Equal }
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

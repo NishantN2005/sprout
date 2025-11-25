@@ -30,6 +30,10 @@ impl Parser {
             Token::Minus => Some((1, true)),
             Token::Star => Some((2, true)),
             Token::Slash => Some((2, true)),
+
+            Token::Gt => Some((0, true)),
+            Token::Lt => Some((0, true)),
+            Token::EqComp => Some((0, true)),
             _ => None,
         }
     }
@@ -113,6 +117,10 @@ impl Parser {
                     Token::Minus => BinaryOp::Sub,
                     Token::Star => BinaryOp::Mul,
                     Token::Slash => BinaryOp::Div,
+
+                    Token::Gt => BinaryOp::Greater,
+                    Token::Lt => BinaryOp::Less,
+                    Token::EqComp => BinaryOp::Equal,
                     _ => unreachable!(),
                 };
                 left = Expr::Binary {
