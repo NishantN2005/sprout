@@ -1,8 +1,36 @@
 # Sprout
 
-Sprout is a small educational compiler project written in Rust. It contains a simple
-front-end (lexer + parser), a middle IR with lowering and basic optimizations, and a
-backend based on LLVM (via `inkwell`) for JIT-running generated code.
+Sprout is a small educational compiler project written in Rust designed around **automatic partitioning and GPU acceleration**. 
+The core vision is to build a compiler that automatically parallelizes code and offloads computations to GPUs wherever safe and beneficial, 
+without requiring explicit parallelization directives from the programmer.
+
+It contains a simple front-end (lexer + parser), a middle IR with lowering and basic optimizations, and a backend based on LLVM (via `inkwell`) 
+for JIT-running generated code.
+
+## Design Goals: Automatic Parallelization & GPU Offloading
+
+Sprout is being designed with **automatic GPU partitioning** as a core principle. The compiler will:
+
+- **Analyze data dependencies** to identify parallelizable regions of code.
+- **Automatically partition work** across GPU threads and blocks where the compiler can guarantee correctness and safety.
+- **Insert data transfer and synchronization** code transparently so the programmer sees sequential semantics.
+- **Use ML/LLM-guided heuristics** (experimental) to make intelligent decisions about when and where to parallelize, balancing compute intensity, memory bandwidth, and synchronization overhead.
+
+### Current Status
+
+This is a **work-in-progress research compiler**. Currently implemented:
+- Basic expression evaluation and variable assignment.
+- Simple control flow (if statements without else).
+- Constant folding optimization.
+- LLVM-based JIT execution.
+
+Future roadmap (targeting automatic parallelization):
+- Loop analysis and vectorization hints.
+- Memory aliasing analysis.
+- Data layout and cache-aware optimizations.
+- GPU code generation (PTX / SPIR-V).
+- ML-guided cost models for partitioning decisions.
+- Runtime scheduler for dynamic workload distribution.
 
 This README explains how to build, run, and develop locally.
 
