@@ -8,6 +8,9 @@ pub enum Token {
     RParen,
     Comma,
     Equals,
+    Gt,
+    Lt,
+    EqComp,
     Semicolon,
     Number(i64),
     Ident(String),
@@ -34,7 +37,17 @@ pub fn lex(input: &str) -> Vec<Token> {
                     }
                 }
             ';' => {chars.next(); tokens.push(Token::Semicolon);}
-            '=' => {chars.next(); tokens.push(Token::Equals);}
+            '=' => {
+                chars.next(); 
+                if let Some(&'=') = chars.peek() {
+                    chars.next();
+                    tokens.push(Token::EqComp);
+                } else {
+                    tokens.push(Token::Equals);
+                }
+            }
+            '>' => {chars.next(); tokens.push(Token::Gt);}
+            '<' => {chars.next(); tokens.push(Token::Lt);}
             '+' => { chars.next(); tokens.push(Token::Plus); }
             '-' => { chars.next(); tokens.push(Token::Minus); }
             '*' => { chars.next(); tokens.push(Token::Star); }
