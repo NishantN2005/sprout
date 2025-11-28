@@ -7,6 +7,7 @@ pub enum Expr {
     Unary { op: UnaryOp, expr: Box<Expr> },
     Binary { left: Box<Expr>, op: BinaryOp, right: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },
+    If {cond: Box<Expr>, body: Box<Expr>}
 }
 
 //add increment operation later
@@ -30,6 +31,9 @@ impl fmt::Display for Expr {
                     write!(f, "{}", a)?;
                 }
                 write!(f, ")")
+            }
+            Expr::If { cond, body } => {
+                write!(f, "if {} {}", cond, body)
             }
         }
     }
