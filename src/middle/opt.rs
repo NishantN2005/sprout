@@ -25,6 +25,9 @@ pub fn constant_folding(function: &mut Function){
                     let res = lv + rv;
                     const_map.insert(*dst, res);
                     new_body.push(Inst::Const {dst: *dst, value: res});
+                } else {
+                    // cannot fold: keep original instruction
+                    new_body.push(expr.clone());
                 }
             }
             Inst::Sub {dst, lhs, rhs} =>{
@@ -32,6 +35,8 @@ pub fn constant_folding(function: &mut Function){
                     let res = lv - rv;
                     const_map.insert(*dst, res);
                     new_body.push(Inst::Const {dst: *dst, value: res});
+                } else {
+                    new_body.push(expr.clone());
                 }
             }
             Inst::Mul { dst, lhs, rhs } => {
@@ -39,6 +44,8 @@ pub fn constant_folding(function: &mut Function){
                     let res = lv * rv;
                     const_map.insert(*dst, res);
                     new_body.push(Inst::Const { dst: *dst, value: res });
+                } else {
+                    new_body.push(expr.clone());
                 }
             }
 
@@ -49,9 +56,11 @@ pub fn constant_folding(function: &mut Function){
                         let res = lv / rv;
                         const_map.insert(*dst, res);
                         new_body.push(Inst::Const { dst: *dst, value: res });
-                    }else{
+                    } else {
                         new_body.push(expr.clone());
                     }
+                } else {
+                    new_body.push(expr.clone());
                 }
             },
             Inst::Store {name, src} => {
@@ -72,6 +81,8 @@ pub fn constant_folding(function: &mut Function){
                     let res = lv > rv;
                     const_map.insert(*dst, if res {1} else {0});
                     new_body.push(Inst::Boolean {dst: *dst, value: res});
+                } else {
+                    new_body.push(expr.clone());
                 }
             },
             Inst::Less {dst, lhs, rhs} => {
@@ -79,6 +90,8 @@ pub fn constant_folding(function: &mut Function){
                     let res = lv < rv;
                     const_map.insert(*dst, if res {1} else {0});
                     new_body.push(Inst::Boolean {dst: *dst, value: res});
+                } else {
+                    new_body.push(expr.clone());
                 }
             },
             Inst::Equal {dst, lhs, rhs} => {
@@ -86,6 +99,8 @@ pub fn constant_folding(function: &mut Function){
                     let res = lv == rv;
                     const_map.insert(*dst, if res {1} else {0});
                     new_body.push(Inst::Boolean {dst: *dst, value: res});
+                } else {
+                    new_body.push(expr.clone());
                 }
             }
             _ => todo!()

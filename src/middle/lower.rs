@@ -31,7 +31,7 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
         Expr::If {cond, body} => {
             let cond_val = lower_expr(cond, func);
 
-            let body_val = lowerexpr(body, func);
+            let body_val = lower_expr(body, func);
 
             body_val
         }

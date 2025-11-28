@@ -13,8 +13,13 @@ use inkwell::{
 
 use crate::middle::ir::{Module as IrModule, Function as IrFunction, Inst, ValueId};
 pub fn init_llvm() {
-    Target::initialize_native(&InitializationConfig::default())
-        .expect("Failed to initialize native target");
+    match Target::initialize_native(&InitializationConfig::default()) {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("Warning: failed to initialize native LLVM target: {e}");
+            eprintln!("JIT execution may fail. If you need JIT, install a compatible LLVM and set LLVM_SYS_<ver>_PREFIX environment variable.");
+        }
+    }
 }
 pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
     //find IR main
@@ -110,33 +115,30 @@ fn codegen_function<'ctx>(
                 let v = i64_type.const_int(*value as u64, true);
                 set_val(&mut values, *dst, v);
             }
-            Inst::Boolean {dst, value} => {
-                let v = if *value {
-                    i64_type.const_int(1, false)
-                }else{
-                    i64_type.const_int(0, false)
-                };
+            Inst::Boolean { dst, value } => {
+                let v = i64_type.const_int(if *value { 1 } else { 0 }, false);
+                set_val(&mut values, *dst, v);
+            }
+            // comparison instructions -> produce i64 0/1 (false/true)
+            Inst::Less { dst, lhs, rhs } => {
+                let l = get_val(&values, *lhs)?;
+                let r = get_val(&values, *rhs)?;
+                let cmp = builder
+                    .build_int_compare(inkwell::IntPredicate::SLT, l, r, "cmplt")
+                    .expect("build_int_compare failed");
+                let v = builder
+                    .build_int_z_extend(cmp, i64_type, "zext")
+                    .expect("build_int_z_extend failed");
                 set_val(&mut values, *dst, v);
             }
             Inst::Greater { dst, lhs, rhs } => {
                 let l = get_val(&values, *lhs)?;
                 let r = get_val(&values, *rhs)?;
                 let cmp = builder
-                    .build_int_compare(inkwell::IntPredicate::SGT, l, r, "gttmp")
+                    .build_int_compare(inkwell::IntPredicate::SGT, l, r, "cmpgt")
                     .expect("build_int_compare failed");
                 let v = builder
-                    .build_int_z_extend(cmp, i64_type, "booltmp")
-                    .expect("build_int_z_extend failed");
-                set_val(&mut values, *dst, v);
-            }
-            Inst::Less { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
-                let cmp = builder
-                    .build_int_compare(inkwell::IntPredicate::SLT, l, r, "lttmp")
-                    .expect("build_int_compare failed");
-                let v = builder
-                    .build_int_z_extend(cmp, i64_type, "booltmp")
+                    .build_int_z_extend(cmp, i64_type, "zext")
                     .expect("build_int_z_extend failed");
                 set_val(&mut values, *dst, v);
             }
@@ -144,10 +146,10 @@ fn codegen_function<'ctx>(
                 let l = get_val(&values, *lhs)?;
                 let r = get_val(&values, *rhs)?;
                 let cmp = builder
-                    .build_int_compare(inkwell::IntPredicate::EQ, l, r, "eqtmp")
+                    .build_int_compare(inkwell::IntPredicate::EQ, l, r, "cmpeq")
                     .expect("build_int_compare failed");
                 let v = builder
-                    .build_int_z_extend(cmp, i64_type, "booltmp")
+                    .build_int_z_extend(cmp, i64_type, "zext")
                     .expect("build_int_z_extend failed");
                 set_val(&mut values, *dst, v);
             }
