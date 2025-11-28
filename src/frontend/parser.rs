@@ -41,6 +41,17 @@ impl Parser {
     fn parse_prec(&mut self, min_prec: u8) -> Result<Expr, String> {
         // prefix
         let mut left = match self.peek() {
+            Token::If =>{
+                self.next();
+                let cond = self.parse_expression()?;
+                if let Token::Colon = self.peek(){
+                    self.next();
+                } else {
+                    return Err("Expected ':' after if condition".to_string());
+                }
+                let body = self.parse_expression()?;
+                Expr::If { cond: Box::new(cond), body: Box::new(body) }
+            }
             Token::Minus => {
                 self.next();
                 let rhs = self.parse_prec(3)?;

@@ -1,5 +1,6 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
+    If,
     Plus,
     Minus,
     Star,
@@ -11,6 +12,7 @@ pub enum Token {
     Gt,
     Lt,
     EqComp,
+    Colon,
     Semicolon,
     Number(i64),
     Ident(String),
@@ -46,6 +48,7 @@ pub fn lex(input: &str) -> Vec<Token> {
                     tokens.push(Token::Equals);
                 }
             }
+            ':' =>{ chars.next(); tokens.push(Token::Colon); }
             '>' => {chars.next(); tokens.push(Token::Gt);}
             '<' => {chars.next(); tokens.push(Token::Lt);}
             '+' => { chars.next(); tokens.push(Token::Plus); }
@@ -70,7 +73,11 @@ pub fn lex(input: &str) -> Vec<Token> {
                 while let Some(&ch) = chars.peek() {
                     if is_ident_continue(ch) { s.push(ch); chars.next(); } else { break; }
                 }
+                if s== "if"{
+                    tokens.push(Token::If);
+                }else{
                 tokens.push(Token::Ident(s));
+                }
             }
             _ => { chars.next(); }
         }
