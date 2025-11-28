@@ -28,6 +28,13 @@ pub fn lower_program_to_module(exprs: &[Expr]) -> Module {
 
 fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
     match expr {
+        Expr::If {cond, body} => {
+            let cond_val = lower_expr(cond, func);
+
+            let body_val = lowerexpr(body, func);
+
+            body_val
+        }
         Expr::Number(n) => {
             let dst = func.fresh_value();
             func.body.push(Inst::Const { dst, value: *n });
