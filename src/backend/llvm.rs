@@ -29,7 +29,6 @@ pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
         .find(|f| f.name == "main")
         .ok_or("No main function found".to_string())?;
 
-
     //setup LLVM
     let context = Context::create();
     let llvm_module = context.create_module("sprout_module");
@@ -42,17 +41,23 @@ pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
     //codegen main body
     codegen_function(&context, &builder, i64_type, llvm_main, main_ir)?;
 
-    let execution_engine = llvm_module
-        .create_jit_execution_engine(OptimizationLevel::None)
-        .map_err(|e| format!("Failed to create JIT engine: {:?}", e))?;
+    // Print the LLVM IR for debugging
+    println!("LLVM IR:\n{}", llvm_module.print_to_string().to_string());
 
-    unsafe {
-        let addr = execution_engine
-            .get_function_address("main")
-            .map_err(|e| format!("Failed to get 'main' symbol: {:?}", e))?;
-
-        let func: extern "C" fn() -> i64 = std::mem::transmute(addr);
-        Ok(func())
+    // Try JIT execution
+    match llvm_module.create_jit_execution_engine(OptimizationLevel::None) {
+        Ok(execution_engine) => {
+            unsafe {
+                match execution_engine.get_function_address("main") {
+                    Ok(addr) => {
+                        let func: extern "C" fn() -> i64 = std::mem::transmute(addr);
+                        Ok(func())
+                    }
+                    Err(e) => Err(format!("Failed to get 'main' symbol: {:?}", e)),
+                }
+            }
+        }
+        Err(e) => Err(format!("Failed to create JIT engine: {:?}", e)),
     }
 }
 
@@ -108,6 +113,9 @@ fn codegen_function<'ctx>(
 
     // map var names to allocation pointers
     let mut vars: HashMap<String, PointerValue<'ctx>> = HashMap::new();
+
+    // track if we've seen a return instruction
+    let mut has_return = false;
 
     // helper to codegen a single instruction (used recursively for nested blocks)
     fn codegen_inst<'ctx>(
@@ -233,6 +241,9 @@ fn codegen_function<'ctx>(
                 Err("Call lowering not implemented yet".into())
             }
             Inst::Conditional { cond, body, else_insts, dst } => {
+                // save current builder position (in case we're nested)
+                let current_block = builder.get_insert_block();
+
                 // compute condition value
                 let cond_val = get_val(values, *cond)?;
                 let zero = i64_type.const_int(0, false);
@@ -251,23 +262,42 @@ fn codegen_function<'ctx>(
                 // insert into vars if not already present
                 vars.entry(temp_name.clone()).or_insert(temp_ptr);
 
-                // branch
+                // branch from current position
                 builder
                     .build_conditional_branch(cond_bool, then_bb, else_bb);
 
                 // THEN
                 builder.position_at_end(then_bb);
+                let mut then_terminated = false;
                 for i in body.iter() {
                     codegen_inst(context, builder, i64_type, llvm_func, i, values, vars)?;
+                    // check if this instruction is a Return (terminates the block)
+                    if matches!(i, Inst::Return { .. }) {
+                        then_terminated = true;
+                        break;
+                    }
                 }
-                let _ = builder.build_unconditional_branch(merge_bb);
+                if !then_terminated {
+                    let _ = builder.build_unconditional_branch(merge_bb);
+                }
 
                 // ELSE
                 builder.position_at_end(else_bb);
+                let mut else_terminated = false;
                 for i in else_insts.iter() {
                     codegen_inst(context, builder, i64_type, llvm_func, i, values, vars)?;
+                    // check if this instruction terminates the block
+                    if matches!(i, Inst::Return { .. }) {
+                        else_terminated = true;
+                        break;
+                    }
+                    // if it's a Conditional, the builder is now at its merge block
+                    // continue adding instructions there
                 }
-                let _ = builder.build_unconditional_branch(merge_bb);
+                if !else_terminated {
+                    // branch from current position (may be else_bb or a nested conditional's merge)
+                    let _ = builder.build_unconditional_branch(merge_bb);
+                }
 
                 // MERGE: load temp into dst
                 builder.position_at_end(merge_bb);
@@ -277,6 +307,10 @@ fn codegen_function<'ctx>(
                     .expect("build_load failed")
                     .into_int_value();
                 set_val(values, *dst, loaded);
+                
+                // if we were called from within a parent block (nested conditional),
+                // restore builder position to the merge block so parent can continue
+                // (merge is now the "current" block for any code after this conditional)
                 Ok(())
             }
         }
@@ -287,9 +321,15 @@ fn codegen_function<'ctx>(
         codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars)?;
     }
 
-    // default: if no return seen, return 0
-    let zero = i64_type.const_int(0, false);
-    builder.build_return(Some(&zero));
+    // only emit default return if the current block doesn't already have a terminator
+    // (a terminator is a return or branch instruction that ends a basic block)
+    if let Some(current_block) = builder.get_insert_block() {
+        if current_block.get_terminator().is_none() {
+            // no terminator, so emit default return 0
+            let zero = i64_type.const_int(0, false);
+            let _ = builder.build_return(Some(&zero));
+        }
+    }
     Ok(())
 }
 

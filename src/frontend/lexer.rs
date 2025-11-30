@@ -74,7 +74,7 @@ pub fn lex(input: &str) -> Vec<Token> {
                 while let Some(&ch) = chars.peek() {
                     if is_ident_continue(ch) { s.push(ch); chars.next(); } else { break; }
                 }
-                if s == "if" {
+                if s== "if"{
                     tokens.push(Token::If);
                 } else if s == "else" {
                     tokens.push(Token::Else);

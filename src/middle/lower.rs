@@ -185,7 +185,12 @@ fn lower_into(expr: &Expr, func: &mut Function, out: &mut Vec<Inst>) -> ValueId 
 
             // push a Conditional inst into the provided vector
             out.push(Inst::Conditional { cond: cond_val, body: then_insts, else_insts, dst });
-            dst
+            
+            // after the Conditional, emit a Load from the temp into a fresh result ValueId
+            // so that the caller can use the result before it's actually loaded
+            let result = func.fresh_value();
+            out.push(Inst::Load { dst: result, name: temp_name });
+            result
         }
         Expr::Number(n) => {
             let dst = func.fresh_value();
