@@ -103,6 +103,18 @@ pub fn constant_folding(function: &mut Function){
                     new_body.push(expr.clone());
                 }
             }
+            Inst::Conditional { .. } => {
+                // preserve conditional branches as-is; nested optimization happens elsewhere
+                new_body.push(expr.clone());
+            }
+            Inst::Call { .. } => {
+                // preserve function calls as-is
+                new_body.push(expr.clone());
+            }
+            Inst::Return { .. } => {
+                // preserve return as-is
+                new_body.push(expr.clone());
+            }
             _ => todo!()
 
 

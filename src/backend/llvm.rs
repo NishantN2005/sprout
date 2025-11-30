@@ -109,122 +109,182 @@ fn codegen_function<'ctx>(
     // map var names to allocation pointers
     let mut vars: HashMap<String, PointerValue<'ctx>> = HashMap::new();
 
-    for inst in &ir_func.body {
+    // helper to codegen a single instruction (used recursively for nested blocks)
+    fn codegen_inst<'ctx>(
+        context: &'ctx Context,
+        builder: &Builder<'ctx>,
+        i64_type: IntType<'ctx>,
+        llvm_func: FunctionValue<'ctx>,
+        inst: &Inst,
+        values: &mut Vec<Option<IntValue<'ctx>>>,
+        vars: &mut HashMap<String, PointerValue<'ctx>>,
+    ) -> Result<(), String> {
         match inst {
             Inst::Const { dst, value } => {
                 let v = i64_type.const_int(*value as u64, true);
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
             Inst::Boolean { dst, value } => {
                 let v = i64_type.const_int(if *value { 1 } else { 0 }, false);
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
-            // comparison instructions -> produce i64 0/1 (false/true)
             Inst::Less { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let cmp = builder
                     .build_int_compare(inkwell::IntPredicate::SLT, l, r, "cmplt")
                     .expect("build_int_compare failed");
                 let v = builder
                     .build_int_z_extend(cmp, i64_type, "zext")
                     .expect("build_int_z_extend failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
             Inst::Greater { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let cmp = builder
                     .build_int_compare(inkwell::IntPredicate::SGT, l, r, "cmpgt")
                     .expect("build_int_compare failed");
                 let v = builder
                     .build_int_z_extend(cmp, i64_type, "zext")
                     .expect("build_int_z_extend failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
             Inst::Equal { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let cmp = builder
                     .build_int_compare(inkwell::IntPredicate::EQ, l, r, "cmpeq")
                     .expect("build_int_compare failed");
                 let v = builder
                     .build_int_z_extend(cmp, i64_type, "zext")
                     .expect("build_int_z_extend failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
             Inst::Add { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let v = builder
                     .build_int_add(l, r, "addtmp")
                     .expect("build_int_add failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
-
             Inst::Sub { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let v = builder
                     .build_int_sub(l, r, "subtmp")
                     .expect("build_int_sub failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
-
             Inst::Div { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let v = builder
                     .build_int_signed_div(l, r, "divtmp")
                     .expect("build_int_signed_div failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
-
             Inst::Mul { dst, lhs, rhs } => {
-                let l = get_val(&values, *lhs)?;
-                let r = get_val(&values, *rhs)?;
+                let l = get_val(values, *lhs)?;
+                let r = get_val(values, *rhs)?;
                 let v = builder
                     .build_int_mul(l, r, "multmp")
                     .expect("build_int_mul failed");
-                set_val(&mut values, *dst, v);
+                set_val(values, *dst, v);
+                Ok(())
             }
-
             Inst::Store { name, src } => {
-                let val = get_val(&values, *src)?;
-
+                let val = get_val(values, *src)?;
                 let ptr = vars.entry(name.clone()).or_insert_with(|| {
                     build_entry_alloca(context, builder, llvm_func, i64_type, name)
                 });
-
                 builder
                     .build_store(*ptr, val)
                     .expect("build_store failed");
+                Ok(())
             }
-
             Inst::Load { dst, name } => {
                 let ptr = vars
                     .get(name)
                     .ok_or_else(|| format!("load of undefined variable '{name}'"))?;
-
-
                 let loaded = builder
                     .build_load(i64_type, *ptr, &format!("load_{name}"))
                     .expect("build_load failed")
                     .into_int_value();
-
-                set_val(&mut values, *dst, loaded);
+                set_val(values, *dst, loaded);
+                Ok(())
             }
-
             Inst::Return { src } => {
-                let v = get_val(&values, *src)?;
-                builder.build_return(Some(&v));
-                return Ok(()); // stop after first return
+                let v = get_val(values, *src)?;
+                let _ = builder.build_return(Some(&v));
+                // indicate stop by returning early to caller
+                Ok(())
             }
-
             Inst::Call { .. } => {
-                return Err("Call lowering not implemented yet".into());
+                Err("Call lowering not implemented yet".into())
+            }
+            Inst::Conditional { cond, body, else_insts, dst } => {
+                // compute condition value
+                let cond_val = get_val(values, *cond)?;
+                let zero = i64_type.const_int(0, false);
+                let cond_bool = builder
+                    .build_int_compare(inkwell::IntPredicate::NE, cond_val, zero, "ifcond")
+                    .expect("build_int_compare failed");
+
+                // create blocks
+                let then_bb = context.append_basic_block(llvm_func, "if.then");
+                let else_bb = context.append_basic_block(llvm_func, "if.else");
+                let merge_bb = context.append_basic_block(llvm_func, "if.merge");
+
+                // pre-create entry alloca for temp so both branches store to same slot
+                let temp_name = format!("__if_tmp_{}", dst.get_usize());
+                let temp_ptr = build_entry_alloca(context, builder, llvm_func, i64_type, &temp_name);
+                // insert into vars if not already present
+                vars.entry(temp_name.clone()).or_insert(temp_ptr);
+
+                // branch
+                builder
+                    .build_conditional_branch(cond_bool, then_bb, else_bb);
+
+                // THEN
+                builder.position_at_end(then_bb);
+                for i in body.iter() {
+                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars)?;
+                }
+                let _ = builder.build_unconditional_branch(merge_bb);
+
+                // ELSE
+                builder.position_at_end(else_bb);
+                for i in else_insts.iter() {
+                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars)?;
+                }
+                let _ = builder.build_unconditional_branch(merge_bb);
+
+                // MERGE: load temp into dst
+                builder.position_at_end(merge_bb);
+                let ptr = vars.get(&temp_name).expect("temp ptr missing");
+                let loaded = builder
+                    .build_load(i64_type, *ptr, &format!("load_if_{}", dst.get_usize()))
+                    .expect("build_load failed")
+                    .into_int_value();
+                set_val(values, *dst, loaded);
+                Ok(())
             }
         }
+    }
+
+    // iterate top-level body and codegen each instruction via helper
+    for inst in &ir_func.body {
+        codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars)?;
     }
 
     // default: if no return seen, return 0

@@ -7,7 +7,7 @@ pub enum Expr {
     Unary { op: UnaryOp, expr: Box<Expr> },
     Binary { left: Box<Expr>, op: BinaryOp, right: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },
-    If {cond: Box<Expr>, body: Box<Expr>}
+    If {cond: Box<Expr>, body: Box<Expr>, else_branch: Option<Box<Expr>>}
 }
 
 //add increment operation later
@@ -32,8 +32,12 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             }
-            Expr::If { cond, body } => {
-                write!(f, "if {} {}", cond, body)
+            Expr::If { cond, body, else_branch } => {
+                if let Some(else_e) = else_branch {
+                    write!(f, "if {} {} else {}", cond, body, else_e)
+                } else {
+                    write!(f, "if {} {}", cond, body)
+                }
             }
         }
     }

@@ -50,7 +50,29 @@ impl Parser {
                     return Err("Expected ':' after if condition".to_string());
                 }
                 let body = self.parse_expression()?;
-                Expr::If { cond: Box::new(cond), body: Box::new(body) }
+
+                // optional else / else if
+                let mut else_branch: Option<Box<Expr>> = None;
+                if let Token::Else = self.peek() {
+                    self.next();
+                    // else if: let the parser parse the following `if` expression as the else-branch
+                    if let Token::If = self.peek() {
+                        // parse the nested if expression (this will consume the `If` and its parts)
+                        let nested = self.parse_prec(0)?;
+                        else_branch = Some(Box::new(nested));
+                    } else {
+                        // plain else: expect ':' then parse body
+                        if let Token::Colon = self.peek() {
+                            self.next();
+                        } else {
+                            return Err("Expected ':' after else".to_string());
+                        }
+                        let else_body = self.parse_expression()?;
+                        else_branch = Some(Box::new(else_body));
+                    }
+                }
+
+                Expr::If { cond: Box::new(cond), body: Box::new(body), else_branch }
             }
             Token::Minus => {
                 self.next();

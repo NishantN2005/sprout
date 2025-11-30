@@ -29,6 +29,7 @@ pub enum Inst {
     Call  { dst: ValueId, callee: String, args: Vec<ValueId> },
     Load {dst: ValueId, name: String},
     Store {name: String, src: ValueId},
+    Conditional {cond: ValueId, body: Vec<Inst>, else_insts: Vec<Inst>, dst: ValueId },
     Return {src: ValueId},
 }
 

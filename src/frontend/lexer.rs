@@ -1,6 +1,7 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     If,
+    Else,
     Plus,
     Minus,
     Star,
@@ -73,10 +74,12 @@ pub fn lex(input: &str) -> Vec<Token> {
                 while let Some(&ch) = chars.peek() {
                     if is_ident_continue(ch) { s.push(ch); chars.next(); } else { break; }
                 }
-                if s== "if"{
+                if s == "if" {
                     tokens.push(Token::If);
-                }else{
-                tokens.push(Token::Ident(s));
+                } else if s == "else" {
+                    tokens.push(Token::Else);
+                } else {
+                    tokens.push(Token::Ident(s));
                 }
             }
             _ => { chars.next(); }
