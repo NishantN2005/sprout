@@ -50,9 +50,10 @@ impl Parser {
                     return Err("Expected ':' after if condition".to_string());
                 }
                 let body = self.parse_expression()?;
-
                 // optional else / else if
                 let mut else_branch: Option<Box<Expr>> = None;
+                // skip any semicolons/newline separators between the then-body and an else
+                while let Token::Semicolon = self.peek() { self.next(); }
                 if let Token::Else = self.peek() {
                     self.next();
                     // else if: let the parser parse the following `if` expression as the else-branch
@@ -61,7 +62,8 @@ impl Parser {
                         let nested = self.parse_prec(0)?;
                         else_branch = Some(Box::new(nested));
                     } else {
-                        // plain else: expect ':' then parse body
+                        // plain else: allow optional separators before ':' then parse body
+                        while let Token::Semicolon = self.peek() { self.next(); }
                         if let Token::Colon = self.peek() {
                             self.next();
                         } else {
@@ -171,6 +173,8 @@ impl Parser {
 }
 
 fn parse_statement(tokens: Vec<Token>) -> Result<Vec<Vec<Token>>, String> {
+        // Legacy function - keep for callers that still use it, but
+        // prefer token-stream parsing in `parse_tokens` now.
         let mut statements: Vec<Vec<Token>> = Vec::new();
         let mut tmp = Vec::new();
         for stmt in tokens{
@@ -181,25 +185,82 @@ fn parse_statement(tokens: Vec<Token>) -> Result<Vec<Vec<Token>>, String> {
                 tmp.push(stmt);
             }
         };
+        // If there are any remaining tokens after the loop (no trailing
+        // semicolon), treat them as the final statement.
+        if !tmp.is_empty() {
+            statements.push(tmp);
+        }
         Ok(statements)
     }
 
 // public entry:
 pub fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Expr>, String> {
-    let p_stat = parse_statement(tokens)?;
-    let mut p = Vec::new();
+    // Parse the whole token stream in a single parser instance so
+    // expressions like `if ...: ...; else: ...; + 1` can bind the `if`
+    // expression into surrounding infix operators without requiring
+    // parentheses.
+    let mut parser = Parser::new(tokens);
+    let mut results: Vec<Expr> = Vec::new();
 
-    for stmt in p_stat.iter(){
-        let mut parse = Parser::new(stmt.clone());
-        p.push(parse.parse_expression()?);
+    loop {
+        match parser.peek() {
+            Token::Eof => break,
+            Token::Semicolon => { parser.next(); continue; }
+            _ => {
+                // parse an expression; after parsing we may need to fold
+                // an operator-led continuation from the next statement into
+                // the current expression (e.g., a trailing `+ 1;` should
+                // become `(prev_expr) + 1`). This lets `if` act like an
+                // expression that composes with a following operator.
+                let mut expr = parser.parse_expression()?;
+
+                // If there's a semicolon and the token after it is an
+                // operator we understand, consume the semicolon and fold
+                // the operator + rhs into the current expression.
+                loop {
+                    // Need to check there's at least one token after the semicolon
+                    if let Token::Semicolon = parser.peek() {
+                        // safe index check
+                        let next_idx = parser.pos + 1;
+                        if let Some(next_tok) = parser.tokens.get(next_idx) {
+                            if Parser::precedence(next_tok).is_some() {
+                                // consume the semicolon and operator
+                                parser.next(); // semicolon
+                                let op_tok = parser.next().clone();
+                                let (prec, left_assoc) = Parser::precedence(&op_tok).unwrap();
+                                let next_min = if left_assoc { prec + 1 } else { prec };
+                                let right = parser.parse_prec(next_min)?;
+                                let op = match op_tok {
+                                    Token::Plus => BinaryOp::Add,
+                                    Token::Minus => BinaryOp::Sub,
+                                    Token::Star => BinaryOp::Mul,
+                                    Token::Slash => BinaryOp::Div,
+                                    Token::Gt => BinaryOp::Greater,
+                                    Token::Lt => BinaryOp::Less,
+                                    Token::EqComp => BinaryOp::Equal,
+                                    _ => unreachable!(),
+                                };
+                                expr = Expr::Binary { left: Box::new(expr), op, right: Box::new(right) };
+                                // after folding, continue in case of chained ops
+                                continue;
+                            }
+                        }
+                    }
+                    break;
+                }
+
+                results.push(expr);
+                // consume an optional semicolon after the expression if present
+                if let Token::Semicolon = parser.peek() { parser.next(); }
+            }
+        }
     }
 
-    //let expr = p_stat.parse_expression()?;
-    for expr in p.iter(){
+    for expr in results.iter(){
         println!("Parsed expression: {}", expr);
     }
 
-    Ok(p)
+    Ok(results)
     /*match p.peek() {
         Token::Eof => Ok(Vec<Expr>),
         t => Err(format!("Unexpected trailing token: {:?}", t)),

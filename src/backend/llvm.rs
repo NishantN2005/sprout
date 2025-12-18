@@ -57,7 +57,110 @@ pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
                 }
             }
         }
-        Err(e) => Err(format!("Failed to create JIT engine: {:?}", e)),
+        Err(e) => {
+            eprintln!("Codegen/JIT error: Failed to create JIT engine: {:?}\nFalling back to IR interpreter.", e);
+            // Interpreter fallback: execute the IR directly to produce a result
+            interpret_main(ir)
+        }
+    }
+}
+
+// Simple interpreter fallback for environments without a working JIT.
+fn interpret_main(ir: &IrModule) -> Result<i64, String> {
+    // find main
+    let main = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "main")
+        .ok_or("No main function found".to_string())?;
+
+    let mut values: Vec<Option<i64>> = Vec::new();
+    let mut vars: HashMap<String, i64> = HashMap::new();
+
+    fn get_val(values: &Vec<Option<i64>>, id: ValueId) -> Result<i64, String> {
+        values
+            .get(id.get_usize())
+            .and_then(|v| *v)
+            .ok_or_else(|| format!("ValueId v{} not found", id.get_usize()))
+    }
+
+    fn set_val(values: &mut Vec<Option<i64>>, id: ValueId, v: i64) {
+        let idx = id.get_usize();
+        if values.len() <= idx { values.resize(idx + 1, None); }
+        values[idx] = Some(v);
+    }
+
+    fn exec_block(body: &[Inst], values: &mut Vec<Option<i64>>, vars: &mut HashMap<String, i64>) -> Result<Option<i64>, String> {
+        for inst in body {
+            match inst {
+                Inst::Const { dst, value } => set_val(values, *dst, *value),
+                Inst::Boolean { dst, value } => set_val(values, *dst, if *value { 1 } else { 0 }),
+                Inst::Add { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    set_val(values, *dst, l + r);
+                }
+                Inst::Sub { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    set_val(values, *dst, l - r);
+                }
+                Inst::Mul { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    set_val(values, *dst, l * r);
+                }
+                Inst::Div { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    if r == 0 { return Err("Division by zero".to_string()); }
+                    set_val(values, *dst, l / r);
+                }
+                Inst::Greater { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    set_val(values, *dst, if l > r { 1 } else { 0 });
+                }
+                Inst::Less { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    set_val(values, *dst, if l < r { 1 } else { 0 });
+                }
+                Inst::Equal { dst, lhs, rhs } => {
+                    let l = get_val(values, *lhs)?;
+                    let r = get_val(values, *rhs)?;
+                    set_val(values, *dst, if l == r { 1 } else { 0 });
+                }
+                Inst::Store { name, src } => {
+                    let v = get_val(values, *src)?;
+                    vars.insert(name.clone(), v);
+                }
+                Inst::Load { dst, name } => {
+                    let v = *vars.get(name).ok_or_else(|| format!("load of undefined variable '{}'", name))?;
+                    set_val(values, *dst, v);
+                }
+                Inst::Return { src } => {
+                    let v = get_val(values, *src)?;
+                    return Ok(Some(v));
+                }
+                Inst::Conditional { cond, body, else_insts, dst } => {
+                    let cond_v = get_val(values, *cond)?;
+                    if cond_v != 0 {
+                        if let Some(ret) = exec_block(body, values, vars)? { return Ok(Some(ret)); }
+                    } else {
+                        if let Some(ret) = exec_block(else_insts, values, vars)? { return Ok(Some(ret)); }
+                    }
+                    // dst is expected to be set via a store/load pattern; do nothing here
+                }
+                Inst::Call { .. } => return Err("Call lowering not implemented in interpreter".to_string()),
+            }
+        }
+        Ok(None)
+    }
+
+    match exec_block(&main.body, &mut values, &mut vars)? {
+        Some(v) => Ok(v),
+        None => Ok(0),
     }
 }
 
@@ -321,11 +424,17 @@ fn codegen_function<'ctx>(
         codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars)?;
     }
 
-    // only emit default return if the current block doesn't already have a terminator
-    // (a terminator is a return or branch instruction that ends a basic block)
+    // Emit default return in a dedicated exit block so we never place a `ret`
+    // directly inside a branch/merge block. If the current insertion block
+    // lacks a terminator, branch it to `exit` and put the return there.
     if let Some(current_block) = builder.get_insert_block() {
         if current_block.get_terminator().is_none() {
-            // no terminator, so emit default return 0
+            // create a dedicated exit block and branch current block to it
+            let exit_bb = context.append_basic_block(llvm_func, "exit");
+            let _ = builder.build_unconditional_branch(exit_bb);
+
+            // emit the return from the exit block
+            builder.position_at_end(exit_bb);
             let zero = i64_type.const_int(0, false);
             let _ = builder.build_return(Some(&zero));
         }
