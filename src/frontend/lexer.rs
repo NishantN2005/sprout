@@ -2,6 +2,7 @@
 pub enum Token {
     If,
     Else,
+    Def,
     Plus,
     Minus,
     Star,
@@ -18,6 +19,10 @@ pub enum Token {
     Number(i64),
     Ident(String),
     Eof,
+    For, 
+    In, 
+    Break, 
+    Continue
 }
 
 fn is_ident_start(c: char) -> bool { c.is_ascii_alphabetic() || c == '_' }
@@ -78,7 +83,17 @@ pub fn lex(input: &str) -> Vec<Token> {
                     tokens.push(Token::If);
                 } else if s == "else" {
                     tokens.push(Token::Else);
-                } else {
+                } else if s == "def" {
+                    tokens.push(Token::Def);
+                } else if s == "for" {
+                    tokens.push(Token::For);
+                } else if s == "in" {
+                    tokens.push(Token::In);
+                } else if s == "break" {
+                    tokens.push(Token::Break);
+                } else if s == "continue" {
+                    tokens.push(Token::Continue);
+                }else {
                     tokens.push(Token::Ident(s));
                 }
             }

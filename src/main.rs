@@ -46,7 +46,7 @@ fn main() {
                 //optimize module
                 middle::opt::optimize_module(&mut ir_module);
 
-                println!("IR: {:#?}", ir_module);
+                //println!("IR: {:#?}", ir_module);
 
                 match llvm::jit_run_main(&ir_module) {
                     Ok(result) => println!("Result from JIT: {result}"),

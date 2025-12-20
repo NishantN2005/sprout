@@ -36,10 +36,21 @@ pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
     let i64_type = context.i64_type();
 
     //declare LLVM main function
-    let llvm_main = declare_main_func(&context, &llvm_module, i64_type);
+    // Declare all functions first so calls can reference them
+    let mut llvm_fns: HashMap<String, FunctionValue> = HashMap::new();
+    for f in &ir.functions {
+        let fn_type = i64_type.fn_type(&vec![i64_type.into(); f.params.len()], false);
+        let fv = llvm_module.add_function(&f.name, fn_type, None);
+        llvm_fns.insert(f.name.clone(), fv);
+    }
 
-    //codegen main body
-    codegen_function(&context, &builder, i64_type, llvm_main, main_ir)?;
+    let llvm_main = llvm_fns.get("main").cloned().ok_or("No main function found".to_string())?;
+
+    //codegen all functions
+    for f in &ir.functions {
+        let fv = llvm_fns.get(&f.name).unwrap().clone();
+        codegen_function(&context, &builder, i64_type, fv, f, &llvm_fns)?;
+    }
 
     // Print the LLVM IR for debugging
     println!("LLVM IR:\n{}", llvm_module.print_to_string().to_string());
@@ -90,7 +101,7 @@ fn interpret_main(ir: &IrModule) -> Result<i64, String> {
         values[idx] = Some(v);
     }
 
-    fn exec_block(body: &[Inst], values: &mut Vec<Option<i64>>, vars: &mut HashMap<String, i64>) -> Result<Option<i64>, String> {
+    fn exec_block(body: &[Inst], values: &mut Vec<Option<i64>>, vars: &mut HashMap<String, i64>, module: &IrModule) -> Result<Option<i64>, String> {
         for inst in body {
             match inst {
                 Inst::Const { dst, value } => set_val(values, *dst, *value),
@@ -146,19 +157,48 @@ fn interpret_main(ir: &IrModule) -> Result<i64, String> {
                 Inst::Conditional { cond, body, else_insts, dst } => {
                     let cond_v = get_val(values, *cond)?;
                     if cond_v != 0 {
-                        if let Some(ret) = exec_block(body, values, vars)? { return Ok(Some(ret)); }
+                        if let Some(ret) = exec_block(body, values, vars, module)? { return Ok(Some(ret)); }
                     } else {
-                        if let Some(ret) = exec_block(else_insts, values, vars)? { return Ok(Some(ret)); }
+                        if let Some(ret) = exec_block(else_insts, values, vars, module)? { return Ok(Some(ret)); }
                     }
                     // dst is expected to be set via a store/load pattern; do nothing here
                 }
-                Inst::Call { .. } => return Err("Call lowering not implemented in interpreter".to_string()),
+                Inst::Call { dst, callee, args } => {
+                    // evaluate args
+                    let mut arg_vals: Vec<i64> = Vec::new();
+                    for a in args {
+                        arg_vals.push(get_val(values, *a)?);
+                    }
+
+                    // find callee function
+                    let callee_fn = module.functions.iter().find(|f| f.name == *callee)
+                        .ok_or_else(|| format!("call to undefined function '{}'", callee))?;
+
+                    // prepare new frame values and vars
+                    let mut callee_values: Vec<Option<i64>> = Vec::new();
+                    let mut callee_vars: HashMap<String, i64> = HashMap::new();
+
+                    // bind params
+                    for (i, pname) in callee_fn.params.iter().enumerate() {
+                        if i < arg_vals.len() {
+                            callee_vars.insert(pname.clone(), arg_vals[i]);
+                        } else {
+                            callee_vars.insert(pname.clone(), 0);
+                        }
+                    }
+
+                    // execute callee
+                    match exec_block(&callee_fn.body, &mut callee_values, &mut callee_vars, module)? {
+                        Some(v) => set_val(values, *dst, v),
+                        None => set_val(values, *dst, 0),
+                    }
+                }
             }
         }
         Ok(None)
     }
 
-    match exec_block(&main.body, &mut values, &mut vars)? {
+    match exec_block(&main.body, &mut values, &mut vars, ir)? {
         Some(v) => Ok(v),
         None => Ok(0),
     }
@@ -180,7 +220,7 @@ fn get_val<'ctx>(
     id: ValueId,
 ) -> Result<IntValue<'ctx>, String> {
     let idx = id.get_usize();
-    println!("Getting value for ValueId v{}", idx);
+    //println!("Getting value for ValueId v{}", idx);
     values
         .get(idx)
         .and_then(|v| *v)
@@ -206,6 +246,7 @@ fn codegen_function<'ctx>(
     i64_type: IntType<'ctx>,
     llvm_func: FunctionValue<'ctx>,
     ir_func: &IrFunction,
+    all_functions: &HashMap<String, FunctionValue<'ctx>>,
 ) -> Result<(), String> {
     // entry
     let entry_bb = context.append_basic_block(llvm_func, "entry");
@@ -216,6 +257,15 @@ fn codegen_function<'ctx>(
 
     // map var names to allocation pointers
     let mut vars: HashMap<String, PointerValue<'ctx>> = HashMap::new();
+
+    // bind incoming parameters into local allocas so loads/stores work
+    for (i, pname) in ir_func.params.iter().enumerate() {
+        let param_val = llvm_func.get_nth_param(i as u32).expect("param missing").into_int_value();
+        let ptr = build_entry_alloca(context, builder, llvm_func, i64_type, &format!("arg_{}", pname));
+        builder.position_at_end(entry_bb); // ensure store goes in entry
+        builder.build_store(ptr, param_val);
+        vars.insert(pname.clone(), ptr);
+    }
 
     // track if we've seen a return instruction
     let mut has_return = false;
@@ -229,6 +279,7 @@ fn codegen_function<'ctx>(
         inst: &Inst,
         values: &mut Vec<Option<IntValue<'ctx>>>,
         vars: &mut HashMap<String, PointerValue<'ctx>>,
+        all_functions: &HashMap<String, FunctionValue<'ctx>>,
     ) -> Result<(), String> {
         match inst {
             Inst::Const { dst, value } => {
@@ -340,8 +391,28 @@ fn codegen_function<'ctx>(
                 // indicate stop by returning early to caller
                 Ok(())
             }
-            Inst::Call { .. } => {
-                Err("Call lowering not implemented yet".into())
+            Inst::Call { dst, callee, args } => {
+                // lookup callee
+                let callee_fn = all_functions.get(callee).ok_or_else(|| format!("call to undefined function '{}'", callee))?;
+                // prepare argument list
+                let mut llvm_args: Vec<inkwell::values::BasicMetadataValueEnum> = Vec::new();
+                for a in args {
+                    let v = get_val(values, *a)?;
+                    llvm_args.push(v.into());
+                }
+                let call_site = builder.build_call(*callee_fn, &llvm_args, "calltmp")
+                    .map_err(|e| format!("build_call failed: {:?}", e))?;
+                let value_kind = call_site.try_as_basic_value();
+                if let Some(bv) = value_kind.basic() {
+                    if let inkwell::values::BasicValueEnum::IntValue(iv) = bv {
+                        set_val(values, *dst, iv);
+                    } else {
+                        return Err("call returned non-int value".to_string());
+                    }
+                } else {
+                    return Err("call returned void".to_string());
+                }
+                Ok(())
             }
             Inst::Conditional { cond, body, else_insts, dst } => {
                 // save current builder position (in case we're nested)
@@ -373,7 +444,7 @@ fn codegen_function<'ctx>(
                 builder.position_at_end(then_bb);
                 let mut then_terminated = false;
                 for i in body.iter() {
-                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars)?;
+                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars, all_functions)?;
                     // check if this instruction is a Return (terminates the block)
                     if matches!(i, Inst::Return { .. }) {
                         then_terminated = true;
@@ -388,7 +459,7 @@ fn codegen_function<'ctx>(
                 builder.position_at_end(else_bb);
                 let mut else_terminated = false;
                 for i in else_insts.iter() {
-                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars)?;
+                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars, all_functions)?;
                     // check if this instruction terminates the block
                     if matches!(i, Inst::Return { .. }) {
                         else_terminated = true;
@@ -421,7 +492,7 @@ fn codegen_function<'ctx>(
 
     // iterate top-level body and codegen each instruction via helper
     for inst in &ir_func.body {
-        codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars)?;
+        codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars, all_functions)?;
     }
 
     // Emit default return in a dedicated exit block so we never place a `ret`

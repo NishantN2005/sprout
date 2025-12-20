@@ -8,8 +8,20 @@ pub fn lower_program_to_module(exprs: &[Expr]) -> Module {
     let mut last: Option<ValueId> = None;
 
     for e in exprs {
-        let v = lower_expr(e, &mut func);
-        last = Some(v);
+        match e {
+            Expr::Function { name, params, body } => {
+                // create a new function for this definition and lower its body
+                let mut f = Function::new(name.clone());
+                f.params = params.clone();
+                let ret = lower_expr(body, &mut f);
+                f.body.push(Inst::Return { src: ret });
+                module.add_function(f);
+            }
+            _ => {
+                let v = lower_expr(e, &mut func);
+                last = Some(v);
+            }
+        }
     }
 
     let result = match last {
@@ -152,6 +164,7 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
 
             dst
         }
+        _ => panic!("lower_expr: unsupported expression: {:?}", expr)
     }
 }
 
@@ -273,5 +286,6 @@ fn lower_into(expr: &Expr, func: &mut Function, out: &mut Vec<Inst>) -> ValueId 
             out.push(Inst::Call { dst, callee: callee_name, args: arg_ids });
             dst
         }
+        _ => panic!("lower_into: unsupported expression: {:?}", expr)
     }
 }

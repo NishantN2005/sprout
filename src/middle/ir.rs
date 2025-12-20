@@ -5,6 +5,7 @@ pub struct ValueId(u32);
 #[derive(Debug)]
 pub struct Function{
     pub name: String,
+    pub params: Vec<String>,
     pub body: Vec<Inst>,
     next_value: u32 // generate new value id's
 }
@@ -49,6 +50,7 @@ impl Function{
     pub fn new(name: String) -> Self {
         Function {
             name,
+            params: Vec::new(),
             body: Vec::new(),
             next_value: 0,
         }

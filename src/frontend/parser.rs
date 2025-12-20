@@ -41,6 +41,48 @@ impl Parser {
     fn parse_prec(&mut self, min_prec: u8) -> Result<Expr, String> {
         // prefix
         let mut left = match self.peek() {
+            Token::For =>{
+                self.next(); //consume 'for'
+                let var = if let Token::Ident(name) = self.peek(){ name.clone() }
+                    else { return Err("Expected identifier after 'for'".to_string()); };
+                self.next(); //consume ident
+                if let Token::In = self.peek(){ self.next(); } else { return Err("Expected 'in' after for loop variable".to_string()); }
+                let iter_expr = self.parse_expression()?;
+                if let Token::Colon = self.peek(){ self.next(); } else { return Err("Expected ':' after for iterator".to_string()); }
+                let body = self.parse_expression()?;
+                Expr::For { var, iter: Box::new(iter_expr), body: Box::new(body) }
+            }
+            Token::Def => {
+                // parse: def name(param, ...): body
+                self.next(); // consume 'def'
+                let name = if let Token::Ident(n) = self.peek() {
+                    let s = n.clone(); self.next(); s
+                } else {
+                    return Err("Expected function name after 'def'".to_string());
+                };
+                if let Token::LParen = self.peek() { self.next(); } else { return Err("Expected '(' after function name".to_string()); }
+                let mut params: Vec<String> = Vec::new();
+                if let Token::RParen = self.peek() {
+                    self.next(); // empty params
+                } else {
+                    loop {
+                        if let Token::Ident(n) = self.peek() {
+                            params.push(n.clone());
+                            self.next();
+                        } else {
+                            return Err("Expected identifier in parameter list".to_string());
+                        }
+                        match self.peek() {
+                            Token::Comma => { self.next(); continue; }
+                            Token::RParen => { self.next(); break; }
+                            t => return Err(format!("Unexpected token in params: {:?}", t)),
+                        }
+                    }
+                }
+                if let Token::Colon = self.peek() { self.next(); } else { return Err("Expected ':' after function signature".to_string()); }
+                let body = self.parse_expression()?;
+                Expr::Function { name, params, body: Box::new(body) }
+            }
             Token::If =>{
                 self.next();
                 let cond = self.parse_expression()?;
@@ -214,6 +256,11 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Expr>, String> {
                 // expression that composes with a following operator.
                 let mut expr = parser.parse_expression()?;
 
+                // if the parsed expression is a `def` function, it's a top-level
+                // statement; ensure we don't fold a following operator into it
+                // by preventing the operator-led continuation for function defs.
+                let is_function_def = matches!(expr, Expr::Function { .. });
+
                 // If there's a semicolon and the token after it is an
                 // operator we understand, consume the semicolon and fold
                 // the operator + rhs into the current expression.
@@ -223,7 +270,7 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Result<Vec<Expr>, String> {
                         // safe index check
                         let next_idx = parser.pos + 1;
                         if let Some(next_tok) = parser.tokens.get(next_idx) {
-                            if Parser::precedence(next_tok).is_some() {
+                            if Parser::precedence(next_tok).is_some() && !is_function_def {
                                 // consume the semicolon and operator
                                 parser.next(); // semicolon
                                 let op_tok = parser.next().clone();
