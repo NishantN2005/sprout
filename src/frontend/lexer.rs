@@ -22,7 +22,9 @@ pub enum Token {
     For, 
     In, 
     Break, 
-    Continue
+    Continue,
+    RBracket,
+    LBracket,
 }
 
 fn is_ident_start(c: char) -> bool { c.is_ascii_alphabetic() || c == '_' }
@@ -54,6 +56,8 @@ pub fn lex(input: &str) -> Vec<Token> {
                     tokens.push(Token::Equals);
                 }
             }
+            '[' =>{ chars.next(); tokens.push(Token::LBracket); }
+            ']' =>{ chars.next(); tokens.push(Token::RBracket); }
             ':' =>{ chars.next(); tokens.push(Token::Colon); }
             '>' => {chars.next(); tokens.push(Token::Gt);}
             '<' => {chars.next(); tokens.push(Token::Lt);}

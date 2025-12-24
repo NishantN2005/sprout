@@ -89,6 +89,16 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
             }
             dst
         }
+        Expr::List(elements) =>{
+            let mut elem_ids = Vec::new();
+            for it in elements{
+                let id = lower_expr(it, func);
+                elem_ids.push(id);
+            }
+            let dst = func.fresh_value();
+            func.body.push(Inst::MakeList { dst, elems: elem_ids });
+            dst
+        }
         Expr::Unary { op, expr } => {
             let val = lower_expr(expr, func);
             match op {

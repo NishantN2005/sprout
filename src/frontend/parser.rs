@@ -123,10 +123,29 @@ impl Parser {
                 let rhs = self.parse_prec(3)?;
                 Expr::Unary { op: UnaryOp::Neg, expr: Box::new(rhs) }
             }
+            Token::LBracket =>{
+                self.next();
+                let mut ele = Vec::new();
+                if let Token::RBracket = self.peek(){
+                    self.next();
+                }else{
+                    loop{
+                        let e = self.parse_expression()?;
+                        ele.push(e);
+                        match self.peek(){
+                            Token::Comma => { self.next(); }
+                            Token::RBracket => { self.next(); break; }
+                            t => return Err(format!("Unexpected token in list literal: {:?}", t)),
+                        }
+                    }
+                }
+                Expr::List(ele)
+            }
             Token::Semicolon =>{
                 self.next();
                 self.parse_expression()?
             }
+
             Token::Number(n) => {
                 let v = *n;
                 self.next();

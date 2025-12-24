@@ -35,8 +35,16 @@ pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
     let builder = context.create_builder();
     let i64_type = context.i64_type();
 
-    //declare LLVM main function
-    // Declare all functions first so calls can reference them
+    // Declare runtime helpers and external allocators
+    let i8_ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+    // malloc: i8* malloc(i64)
+    let malloc_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("malloc", malloc_type, None);
+    // sprout_list_len: i64 sprout_list_len(i8*)
+    let list_len_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("sprout_list_len", list_len_type, None);
+
+    // Declare all IR functions first so calls can reference them
     let mut llvm_fns: HashMap<String, FunctionValue> = HashMap::new();
     for f in &ir.functions {
         let fn_type = i64_type.fn_type(&vec![i64_type.into(); f.params.len()], false);
@@ -49,7 +57,7 @@ pub fn jit_run_main(ir: &IrModule) -> Result<i64, String> {
     //codegen all functions
     for f in &ir.functions {
         let fv = llvm_fns.get(&f.name).unwrap().clone();
-        codegen_function(&context, &builder, i64_type, fv, f, &llvm_fns)?;
+        codegen_function(&context, &builder, i64_type, fv, f, &llvm_fns, &llvm_module)?;
     }
 
     // Print the LLVM IR for debugging
@@ -85,87 +93,128 @@ fn interpret_main(ir: &IrModule) -> Result<i64, String> {
         .find(|f| f.name == "main")
         .ok_or("No main function found".to_string())?;
 
-    let mut values: Vec<Option<i64>> = Vec::new();
-    let mut vars: HashMap<String, i64> = HashMap::new();
+    #[derive(Clone, Debug)]
+    enum RuntimeVal {
+        Int(i64),
+        List(Vec<RuntimeVal>),
+    }
 
-    fn get_val(values: &Vec<Option<i64>>, id: ValueId) -> Result<i64, String> {
+    let mut values: Vec<Option<RuntimeVal>> = Vec::new();
+    let mut vars: HashMap<String, RuntimeVal> = HashMap::new();
+
+    fn get_val(values: &Vec<Option<RuntimeVal>>, id: ValueId) -> Result<RuntimeVal, String> {
         values
             .get(id.get_usize())
-            .and_then(|v| *v)
+            .and_then(|v| v.clone())
             .ok_or_else(|| format!("ValueId v{} not found", id.get_usize()))
     }
 
-    fn set_val(values: &mut Vec<Option<i64>>, id: ValueId, v: i64) {
+    fn set_val(values: &mut Vec<Option<RuntimeVal>>, id: ValueId, v: RuntimeVal) {
         let idx = id.get_usize();
         if values.len() <= idx { values.resize(idx + 1, None); }
         values[idx] = Some(v);
     }
 
-    fn exec_block(body: &[Inst], values: &mut Vec<Option<i64>>, vars: &mut HashMap<String, i64>, module: &IrModule) -> Result<Option<i64>, String> {
+    fn exec_block(body: &[Inst], values: &mut Vec<Option<RuntimeVal>>, vars: &mut HashMap<String, RuntimeVal>, module: &IrModule) -> Result<Option<i64>, String> {
         for inst in body {
             match inst {
-                Inst::Const { dst, value } => set_val(values, *dst, *value),
-                Inst::Boolean { dst, value } => set_val(values, *dst, if *value { 1 } else { 0 }),
+                Inst::Const { dst, value } => set_val(values, *dst, RuntimeVal::Int(*value)),
+                Inst::Boolean { dst, value } => set_val(values, *dst, RuntimeVal::Int(if *value { 1 } else { 0 })),
                 Inst::Add { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    set_val(values, *dst, l + r);
+                    match (l, r) {
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(a + b)),
+                        _ => return Err("Add expects two ints".to_string()),
+                    }
                 }
                 Inst::Sub { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    set_val(values, *dst, l - r);
+                    match (l, r) {
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(a - b)),
+                        _ => return Err("Sub expects two ints".to_string()),
+                    }
                 }
                 Inst::Mul { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    set_val(values, *dst, l * r);
+                    match (l, r) {
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(a * b)),
+                        _ => return Err("Mul expects two ints".to_string()),
+                    }
                 }
                 Inst::Div { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    if r == 0 { return Err("Division by zero".to_string()); }
-                    set_val(values, *dst, l / r);
+                    match (l, r) {
+                        (RuntimeVal::Int(_), RuntimeVal::Int(0)) => return Err("Division by zero".to_string()),
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(a / b)),
+                        _ => return Err("Div expects two ints".to_string()),
+                    }
                 }
                 Inst::Greater { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    set_val(values, *dst, if l > r { 1 } else { 0 });
+                    match (l, r) {
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(if a > b { 1 } else { 0 })),
+                        _ => return Err("Greater expects two ints".to_string()),
+                    }
                 }
                 Inst::Less { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    set_val(values, *dst, if l < r { 1 } else { 0 });
+                    match (l, r) {
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(if a < b { 1 } else { 0 })),
+                        _ => return Err("Less expects two ints".to_string()),
+                    }
                 }
                 Inst::Equal { dst, lhs, rhs } => {
                     let l = get_val(values, *lhs)?;
                     let r = get_val(values, *rhs)?;
-                    set_val(values, *dst, if l == r { 1 } else { 0 });
+                    match (l, r) {
+                        (RuntimeVal::Int(a), RuntimeVal::Int(b)) => set_val(values, *dst, RuntimeVal::Int(if a == b { 1 } else { 0 })),
+                        _ => return Err("Equal expects two ints".to_string()),
+                    }
                 }
+                
                 Inst::Store { name, src } => {
                     let v = get_val(values, *src)?;
                     vars.insert(name.clone(), v);
                 }
                 Inst::Load { dst, name } => {
-                    let v = *vars.get(name).ok_or_else(|| format!("load of undefined variable '{}'", name))?;
+                    let v = vars.get(name).ok_or_else(|| format!("load of undefined variable '{}'", name))?.clone();
                     set_val(values, *dst, v);
                 }
-                Inst::Return { src } => {
-                    let v = get_val(values, *src)?;
-                    return Ok(Some(v));
-                }
+                    Inst::Return { src } => {
+                        let v = get_val(values, *src)?;
+                        // only top-level return values are i64; for runtime values we expect Int
+                        return match v {
+                            RuntimeVal::Int(i) => Ok(Some(i)),
+                            _ => Err("Return of non-int from function".to_string()),
+                        };
+                    }
                 Inst::Conditional { cond, body, else_insts, dst } => {
                     let cond_v = get_val(values, *cond)?;
-                    if cond_v != 0 {
+                    let cond_is_true = match cond_v { RuntimeVal::Int(i) => i != 0, _ => true };
+                    if cond_is_true {
                         if let Some(ret) = exec_block(body, values, vars, module)? { return Ok(Some(ret)); }
                     } else {
                         if let Some(ret) = exec_block(else_insts, values, vars, module)? { return Ok(Some(ret)); }
                     }
                     // dst is expected to be set via a store/load pattern; do nothing here
                 }
+                Inst::MakeList { dst, elems } => {
+                    let mut v: Vec<RuntimeVal> = Vec::new();
+                    for e in elems {
+                        let ev = get_val(values, *e)?;
+                        v.push(ev);
+                    }
+                    set_val(values, *dst, RuntimeVal::List(v));
+                }
                 Inst::Call { dst, callee, args } => {
-                    // evaluate args
-                    let mut arg_vals: Vec<i64> = Vec::new();
+                    // evaluate args to RuntimeVal
+                    let mut arg_vals: Vec<RuntimeVal> = Vec::new();
                     for a in args {
                         arg_vals.push(get_val(values, *a)?);
                     }
@@ -175,22 +224,22 @@ fn interpret_main(ir: &IrModule) -> Result<i64, String> {
                         .ok_or_else(|| format!("call to undefined function '{}'", callee))?;
 
                     // prepare new frame values and vars
-                    let mut callee_values: Vec<Option<i64>> = Vec::new();
-                    let mut callee_vars: HashMap<String, i64> = HashMap::new();
+                    let mut callee_values: Vec<Option<RuntimeVal>> = Vec::new();
+                    let mut callee_vars: HashMap<String, RuntimeVal> = HashMap::new();
 
                     // bind params
                     for (i, pname) in callee_fn.params.iter().enumerate() {
                         if i < arg_vals.len() {
-                            callee_vars.insert(pname.clone(), arg_vals[i]);
+                            callee_vars.insert(pname.clone(), arg_vals[i].clone());
                         } else {
-                            callee_vars.insert(pname.clone(), 0);
+                            callee_vars.insert(pname.clone(), RuntimeVal::Int(0));
                         }
                     }
 
                     // execute callee
                     match exec_block(&callee_fn.body, &mut callee_values, &mut callee_vars, module)? {
-                        Some(v) => set_val(values, *dst, v),
-                        None => set_val(values, *dst, 0),
+                        Some(v) => set_val(values, *dst, RuntimeVal::Int(v)),
+                        None => set_val(values, *dst, RuntimeVal::Int(0)),
                     }
                 }
             }
@@ -247,6 +296,7 @@ fn codegen_function<'ctx>(
     llvm_func: FunctionValue<'ctx>,
     ir_func: &IrFunction,
     all_functions: &HashMap<String, FunctionValue<'ctx>>,
+    llvm_module: &LlvmModule<'ctx>,
 ) -> Result<(), String> {
     // entry
     let entry_bb = context.append_basic_block(llvm_func, "entry");
@@ -268,7 +318,7 @@ fn codegen_function<'ctx>(
     }
 
     // track if we've seen a return instruction
-    let mut has_return = false;
+    let _has_return = false;
 
     // helper to codegen a single instruction (used recursively for nested blocks)
     fn codegen_inst<'ctx>(
@@ -280,6 +330,7 @@ fn codegen_function<'ctx>(
         values: &mut Vec<Option<IntValue<'ctx>>>,
         vars: &mut HashMap<String, PointerValue<'ctx>>,
         all_functions: &HashMap<String, FunctionValue<'ctx>>,
+        module: &LlvmModule<'ctx>,
     ) -> Result<(), String> {
         match inst {
             Inst::Const { dst, value } => {
@@ -391,8 +442,83 @@ fn codegen_function<'ctx>(
                 // indicate stop by returning early to caller
                 Ok(())
             }
+            Inst::MakeList { dst, elems } => {
+                // Create a heap-allocated list layout:
+                // [i64 len, i64 elem0, i64 elem1, ...]
+                let malloc_fn = module.get_function("malloc").ok_or("malloc not declared")?;
+                // total bytes = (1 + elems.len()) * 8
+                let total_bytes = i64_type.const_int(((1 + elems.len()) * 8) as u64, false);
+                let call_site = builder
+                    .build_call(malloc_fn, &[total_bytes.into()], "malloccall")
+                    .map_err(|e| format!("malloc call failed: {:?}", e))?;
+                let value_kind = call_site.try_as_basic_value();
+                let ptr = if let Some(bv) = value_kind.basic() {
+                    if let inkwell::values::BasicValueEnum::PointerValue(pv) = bv {
+                        pv
+                    } else {
+                        return Err("malloc returned non-pointer".to_string());
+                    }
+                } else {
+                    return Err("malloc returned void".to_string());
+                };
+
+                // bitcast to i64* for stores
+                let i64_ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                let ptr_i64 = builder
+                    .build_bit_cast(ptr, i64_ptr_type, "list_ptr_i64")
+                    .map_err(|e| format!("build_bit_cast failed: {:?}", e))?
+                    .into_pointer_value();
+
+                // store length at index 0
+                let len_val = i64_type.const_int(elems.len() as u64, false);
+                let len_ptr = i64_ptr_type.const_zero();
+                builder.build_store(ptr_i64, len_val);
+
+                // store each element at index i+1
+                for (i, e) in elems.iter().enumerate() {
+                    let ev = get_val(values, *e)?;
+                    let idx = i64_type.const_int((i as u64) + 1, false);
+                    let elem_ptr_val = unsafe { builder.build_in_bounds_gep(i64_ptr_type, ptr_i64, &[idx], &format!("elem_ptr_{}", i)) }
+                        .map_err(|e| format!("build_in_bounds_gep failed: {:?}", e))?;
+                    builder.build_store(elem_ptr_val, ev);
+                }
+
+                // convert pointer to i64 so it can be stored in our IntValue slots
+                let ptr_as_int = builder.build_ptr_to_int(ptr_i64, i64_type, "list_as_int")
+                    .map_err(|e| format!("build_ptr_to_int failed: {:?}", e))?;
+                set_val(values, *dst, ptr_as_int);
+                Ok(())
+            }
             Inst::Call { dst, callee, args } => {
-                // lookup callee
+                // builtin: len(list) -> call sprout_list_len
+                if callee == "len" {
+                    if args.len() != 1 {
+                        return Err("len() expects 1 argument".to_string());
+                    }
+                    let i8_ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    // arg is stored as i64 containing pointer
+                    let argv = get_val(values, args[0])?;
+                    // int -> ptr
+                    let arg_ptr = builder.build_int_to_ptr(argv, i8_ptr_type, "arg_ptr")
+                        .map_err(|e| format!("build_int_to_ptr failed: {:?}", e))?;
+                    let len_fn = module.get_function("sprout_list_len").ok_or("sprout_list_len not declared")?;
+                    let call_site = builder
+                        .build_call(len_fn, &[arg_ptr.into()], "call_len")
+                        .map_err(|e| format!("call_len failed: {:?}", e))?;
+                    let value_kind = call_site.try_as_basic_value();
+                    if let Some(bv) = value_kind.basic() {
+                        if let inkwell::values::BasicValueEnum::IntValue(iv) = bv {
+                            set_val(values, *dst, iv);
+                        } else {
+                            return Err("sprout_list_len returned non-int".to_string());
+                        }
+                    } else {
+                        return Err("sprout_list_len returned void".to_string());
+                    }
+                    return Ok(());
+                }
+
+                // normal function call
                 let callee_fn = all_functions.get(callee).ok_or_else(|| format!("call to undefined function '{}'", callee))?;
                 // prepare argument list
                 let mut llvm_args: Vec<inkwell::values::BasicMetadataValueEnum> = Vec::new();
@@ -444,7 +570,7 @@ fn codegen_function<'ctx>(
                 builder.position_at_end(then_bb);
                 let mut then_terminated = false;
                 for i in body.iter() {
-                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars, all_functions)?;
+                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars, all_functions, module)?;
                     // check if this instruction is a Return (terminates the block)
                     if matches!(i, Inst::Return { .. }) {
                         then_terminated = true;
@@ -459,7 +585,7 @@ fn codegen_function<'ctx>(
                 builder.position_at_end(else_bb);
                 let mut else_terminated = false;
                 for i in else_insts.iter() {
-                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars, all_functions)?;
+                    codegen_inst(context, builder, i64_type, llvm_func, i, values, vars, all_functions, module)?;
                     // check if this instruction terminates the block
                     if matches!(i, Inst::Return { .. }) {
                         else_terminated = true;
@@ -492,7 +618,7 @@ fn codegen_function<'ctx>(
 
     // iterate top-level body and codegen each instruction via helper
     for inst in &ir_func.body {
-        codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars, all_functions)?;
+        codegen_inst(context, builder, i64_type, llvm_func, inst, &mut values, &mut vars, all_functions, llvm_module)?;
     }
 
     // Emit default return in a dedicated exit block so we never place a `ret`

@@ -115,7 +115,14 @@ pub fn constant_folding(function: &mut Function){
                 // preserve return as-is
                 new_body.push(expr.clone());
             }
-            _ => todo!()
+            Inst::MakeList { .. } => {
+                // cannot fold lists currently
+                new_body.push(expr.clone());
+            }
+            _ => {
+                // default: preserve unknown instructions
+                new_body.push(expr.clone());
+            }
 
 
         }

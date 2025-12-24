@@ -28,10 +28,12 @@ pub enum Inst {
     Less {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Equal {dst: ValueId, lhs: ValueId, rhs: ValueId},
     Call  { dst: ValueId, callee: String, args: Vec<ValueId> },
+    MakeList { dst: ValueId, elems: Vec<ValueId> },
     Load {dst: ValueId, name: String},
     Store {name: String, src: ValueId},
     Conditional {cond: ValueId, body: Vec<Inst>, else_insts: Vec<Inst>, dst: ValueId },
     Return {src: ValueId},
+
 }
 
 //create and getter for ValueId

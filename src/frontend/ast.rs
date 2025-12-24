@@ -4,6 +4,7 @@ use std::fmt;
 pub enum Expr {
     Number(i64),
     Ident(String),
+    List(Vec<Expr>),
     Unary { op: UnaryOp, expr: Box<Expr> },
     Binary { left: Box<Expr>, op: BinaryOp, right: Box<Expr> },
     Call { callee: Box<Expr>, args: Vec<Expr> },
@@ -26,6 +27,14 @@ impl fmt::Display for Expr {
         match self {
             Expr::Number(n) => write!(f, "{}", n),
             Expr::Ident(s) => write!(f, "{}", s),
+            Expr::List(elements) =>{
+                write!(f, "[")?;
+                for (i, e) in elements.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", e)?;
+                }
+                write!(f, "]")
+            }
             Expr::Unary { op, expr } => write!(f, "({:?} {})", op, expr),
             Expr::Binary { left, op, right } => write!(f, "({} {:?} {})", left, op, right),
             Expr::Call { callee, args } => {
