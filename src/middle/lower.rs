@@ -1,6 +1,6 @@
 use crate::frontend::ast::{Expr, UnaryOp, BinaryOp};
 use crate::middle::ir::{Module, Function, Inst, ValueId};
-
+use crate::backend::runtime::Builtin;
 pub fn lower_program_to_module(exprs: &[Expr]) -> Module {
     let mut module = Module::new();
     let mut func = Function::new("main".to_string());
@@ -158,21 +158,48 @@ fn lower_expr(expr: &Expr, func: &mut Function) -> ValueId {
             dst
         }
         Expr::Call { callee, args } => {
-            let callee_name = match &**callee{
+            let callee_name = match &**callee {
                 Expr::Ident(name) => name.clone(),
                 _ => panic!("non-ident callee not supported yet!"),
             };
 
-            let arg_ids: Vec<ValueId> = args.iter().map(|a| lower_expr(a, func)).collect();
-
-            let dst = func.fresh_value();
-            func.body.push(Inst::Call {
-                dst,
-                callee: callee_name,
-                args: arg_ids,
-            });
-
-            dst
+            if let Some(_builtin) = Builtin::from_name(&callee_name) {
+                match callee_name.as_str() {
+                    "range" => {
+                        if args.len() != 1 && args.len() != 2 {
+                            panic!("range() expects 1 or 2 arguments");
+                        }
+                        let arg_ids: Vec<ValueId> = args.iter().map(|a| lower_expr(a, func)).collect();
+                        let dst = func.fresh_value();
+                        func.body.push(Inst::Call {
+                            dst,
+                            callee: callee_name,
+                            args: arg_ids,
+                        });
+                        dst
+                    }
+                    _ => {
+                        let arg_ids: Vec<ValueId> = args.iter().map(|a| lower_expr(a, func)).collect();
+                        let dst = func.fresh_value();
+                        func.body.push(Inst::Call {
+                            dst,
+                            callee: callee_name,
+                            args: arg_ids,
+                        });
+                        dst
+                    }
+                }
+            } else {
+                // Normal user-defined function
+                let arg_ids: Vec<ValueId> = args.iter().map(|a| lower_expr(a, func)).collect();
+                let dst = func.fresh_value();
+                func.body.push(Inst::Call {
+                    dst,
+                    callee: callee_name,
+                    args: arg_ids,
+                });
+                dst
+            }
         }
         _ => panic!("lower_expr: unsupported expression: {:?}", expr)
     }
